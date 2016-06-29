@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <specVersion>
+    <major>1</major>
+    <minor>0</minor>
+  </specVersion>
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:razb:1</deviceType>
+    <staticJson>D_RAZB.json</staticJson> 
+    <friendlyName>RAZB</friendlyName>
+    <manufacturer>Amg0</manufacturer>
+    <manufacturerURL>http://www.google.fr/</manufacturerURL>
+    <modelDescription>Razberry for openLuup</modelDescription>
+    <modelName>Razberry for openLuup</modelName>
+    <modelNumber>1</modelNumber>
+    <protocol>cr</protocol>
+    <handleChildren>0</handleChildren>
+	<serviceList>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:razb:1</serviceType>
+        <serviceId>urn:upnp-org:serviceId:razb1</serviceId>
+        <controlURL>/upnp/control/RAZB1</controlURL>
+        <eventSubURL>/upnp/event/RAZB1</eventSubURL>
+        <SCPDURL>S_RAZB.xml</SCPDURL>
+      </service>
+    </serviceList>
+    <implementationList>
+      <implementationFile>I_RAZB.xml</implementationFile>
+    </implementationList>
+  </device>
+</root>
+ 

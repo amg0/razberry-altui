@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<implementation>
+  <functions>
+  </functions>
+  <files>L_RAZB.lua</files>
+  <startup>initstatus</startup>
+  <actionList>
+    <action>
+	 <serviceId>urn:upnp-org:serviceId:razb1</serviceId>
+	 <name>SetDebug</name>
+	  <run>
+			setDebugMode(lul_device,lul_settings.newDebugMode)
+	  </run>
+	</action>
+</actionList>
+</implementation>
