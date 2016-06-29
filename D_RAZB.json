@@ -1,6 +1,6 @@
 {
-  "flashicon": "http://code.mios.com/trac/mios_alternate_ui/export/12/iconRAZB.png",
-  "default_icon": "http://code.mios.com/trac/mios_alternate_ui/export/12/iconRAZB.png",
+  "flashicon": "https://raw.githubusercontent.com/amg0/razberry-altui/master/iconRAZB.png",
+  "default_icon": "https://raw.githubusercontent.com/amg0/razberry-altui/master/iconRAZB.png",
   "halloIconsDir": "pics\/hallo",
   "x": "2",
   "y": "4",
@@ -10,7 +10,7 @@
     "doc_manual": 1,
     "doc_version": 1,
     "doc_platform": 0,
-    "doc_page": "http:\/\/code.mios.com\/trac\/xxx",
+    "doc_page": "https:\/\/github.com\/amg0\/razberry-altui",
     "doc_forced_url": {
       "text": "http:\/\/www.google.com"
     }
