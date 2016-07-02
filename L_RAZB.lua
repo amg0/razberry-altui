@@ -371,14 +371,16 @@ local function myHttp(url,method,data)
 	local commonheaders = {
 			["Accept"]="application/json, text/plain, */*",
 			["Accept-Encoding"]="gzip, deflate",
-			["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8",
+			["Content-Type"] = "application/json;charset=UTF-8",
 			["Content-Length"] = data:len(),
 			["User-agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36",
 			["Connection"]= "keep-alive",
 			["Cookie"]= string.format("ZWAYSession=%s",sessiontoken),
 		}
+	debug(string.format("myHttp Request headers:%s",json.encode(commonheaders or '')))
+	debug(string.format("myHttp data:%s",data))
 
-	local response, status, headers = https.request{
+	local response, status, headers = http.request{
 		method=method,
 		url=url,
 		headers = commonheaders,
@@ -387,13 +389,9 @@ local function myHttp(url,method,data)
 	}
 	if (response==1) then
 		local completestring = table.concat(response_body)
-		debug(string.format("Succeed to %s to %s  result=%s",method,url,completestring))
+		debug(string.format("Succeed to %s to %s  result=%s",method,url,json.encode(completestring)))
 		-- if (status==302) then
 			-- -- redirect
-			-- debug( string.format("ALTUI: _helperGoogleScript 302, headers= %s", json.encode(headers) ))
-			-- local url = headers["location"]
-			-- local httpcode,data = luup.inet.wget(url,15)
-			-- return data
 		-- end
 		return completestring
 	else
