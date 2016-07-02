@@ -22,6 +22,7 @@ local https = require ("ssl.https")
 local ltn12 = require("ltn12")
 local modurl = require "socket.url"
 local this_device
+local this_ipaddr
 
 ------------------------------------------------
 -- Debug --
@@ -122,18 +123,12 @@ local function setDebugMode(lul_device,newDebugMode)
 end
 
 local function getIP()
-	-- local stdout = io.popen("GetNetworkState.sh ip_wan")
-	-- local ip = stdout:read("*a")
-	-- stdout:close()
-	-- return ip
 	local mySocket = socket.udp ()  
 	mySocket:setpeername ("42.42.42.42", "424242")  -- arbitrary IP/PORT  
 	local ip = mySocket:getsockname ()  
 	mySocket: close()  
-	return ip or "127.0.0.1" 
+	return ip or "127.0.0.1"
 end
-
-
 
 ------------------------------------------------
 -- Check UI7
@@ -224,16 +219,8 @@ local function Split(str, delim, maxNb)
     return result
 end
 
-function string:split(sep) -- from http://lua-users.org/wiki/SplitJoin   : changed as consecutive delimeters was not returning empty strings
-	return Split(self, sep)
-	-- local sep, fields = sep or ":", {}
-	-- local pattern = string.format("([^%s]+)", sep)
-	-- self:gsub(pattern, function(c) fields[#fields+1] = c end)
-	-- return fields
-end
-
-function string:trim()
-  return self:match "^%s*(.-)%s*$"
+local function Trim(str)
+  return str:match "^%s*(.-)%s*$"
 end
 
 ------------------------------------------------
@@ -262,6 +249,7 @@ end
 local function getAltID(lul_device)
 	return luup.devices[lul_device].id
 end
+
 
 -----------------------------------
 -- from a altid, find a child device
@@ -304,7 +292,7 @@ function myRAZB_Handler(lul_request, lul_parameters, lul_outputformat)
 	local mime_type = "";
 	-- debug("hostname="..hostname)
 	if (hostname=="") then
-		hostname = getIP()
+		hostname = this_ipaddr
 		debug("now hostname="..hostname)
 	end
 	
@@ -334,20 +322,126 @@ function myRAZB_Handler(lul_request, lul_parameters, lul_outputformat)
 end
 
 ------------------------------------------------
+-- Get Status
+------------------------------------------------
+local function getAuthCookie(lul_device,user,password)
+	debug(string.format("getAuthCookie (%s,%s)",user or '',password or ''))
+	local sessioncookie = ""
+	local url = "http://192.168.1.19:8083/ZAutomation/api/v1/login"
+	debug(string.format("getAuthCookie url:%s",url))
+	local data = string.format('{"login":"%s","password":"%s"}',user,password)
+	local response_body = {}
+	local commonheaders = {
+			["Accept"]="application/json, text/plain, */*",
+			["Accept-Encoding"]="gzip, deflate",
+			["Content-Type"] = "application/json;charset=UTF-8",
+			["Content-Length"] = data:len(),
+			["User-agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36",
+			["Connection"]= "keep-alive"
+		}
+	local response, status, headers = http.request{
+		method="POST",
+		url=url,
+		headers = commonheaders,
+		source = ltn12.source.string(data),
+		sink = ltn12.sink.table(response_body)
+	}
+	debug(string.format("getAuthCookie response:%s",response or ''))
+	debug(string.format("getAuthCookie status:%s",status or ''))
+	debug(string.format("getAuthCookie headers:%s",json.encode(headers or '')))
+	if ( response==1 and status==200 ) then
+		local setcookie = headers["set-cookie"]
+		sessioncookie = setcookie:match "^ZWAYSession=(.-);.*;.*$"
+		luup.variable_set(RAZB_SERVICE, "Session", sessioncookie, lul_device)
+	end
+	debug(string.format("sessioncookie=%s",sessioncookie))
+	return sessioncookie
+end
+
+local function myHttp(url,method,data)
+	debug(string.format("myHttp (%s,%s) (%s,%s) data:%s",method,url,user or '',password or '',data or ''))
+	-- local data = "contents="..plugin
+	local sessiontoken = getSetVariable(RAZB_SERVICE, "Session", lul_device, "")
+	if ( sessiontoken=="" or sessiontoken==nil) then
+		local user = getSetVariable(RAZB_SERVICE, "User", lul_device, "admin")
+		local password = getSetVariable(RAZB_SERVICE, "Password", lul_device, "")
+		sessiontoken = getAuthCookie(lul_device,user,password)
+	end
+	local response_body = {}
+	local commonheaders = {
+			["Accept"]="application/json, text/plain, */*",
+			["Accept-Encoding"]="gzip, deflate",
+			["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8",
+			["Content-Length"] = data:len(),
+			["User-agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36",
+			["Connection"]= "keep-alive",
+			["Cookie"]= string.format("ZWAYSession=%s",sessiontoken),
+		}
+
+	local response, status, headers = https.request{
+		method=method,
+		url=url,
+		headers = commonheaders,
+		source = ltn12.source.string(data),
+		sink = ltn12.sink.table(response_body)
+	}
+	if (response==1) then
+		local completestring = table.concat(response_body)
+		debug(string.format("Succeed to %s to %s  result=%s",method,url,completestring))
+		-- if (status==302) then
+			-- -- redirect
+			-- debug( string.format("ALTUI: _helperGoogleScript 302, headers= %s", json.encode(headers) ))
+			-- local url = headers["location"]
+			-- local httpcode,data = luup.inet.wget(url,15)
+			-- return data
+		-- end
+		return completestring
+	else
+		debug(string.format("response:%s",response or ''))
+		debug(string.format("status:%s",status or ''))
+		debug(string.format("headers:%s",json.encode(headers or '')))
+		debug(string.format("Failed to %s to %s",method,url))
+	end				
+	return -1
+end
+
+
+------------------------------------------------
+-- Get Status
+------------------------------------------------
+local timestamp = 0
+
+local function getZWay(lul_device,forcedtimestamp)
+	if (forcedtimestamp==nil) then
+		forcedtimestamp = timestamp
+	end
+
+	local url = string.format("http://%s:8083/ZWave.zway/Data/%s",this_ipaddr,forcedtimestamp)
+	local user = getSetVariable(RAZB_SERVICE, "User", lul_device, "admin")
+	local password = getSetVariable(RAZB_SERVICE, "Password", lul_device, "")
+	local result = myHttp(url,"POST","")
+	if (result ~= -1) then
+		local obj = json.decode(result)
+		timestamp = obj.updateTime
+		debug(string.format("Next timestamp: %s",timestamp))
+	end
+end
+
+------------------------------------------------
 -- STARTUP Sequence
 ------------------------------------------------
-
-
 
 function startupDeferred(lul_device)
 	lul_device = tonumber(lul_device)
 	log("startupDeferred, called on behalf of device:"..lul_device)
 	
 	-- testCompress()
-	
 	local debugmode = getSetVariable(RAZB_SERVICE, "Debug", lul_device, "0")
 	local oldversion = getSetVariable(RAZB_SERVICE, "Version", lul_device, version)
-	
+	local user = getSetVariable(RAZB_SERVICE, "User", lul_device, "admin")
+	local password = getSetVariable(RAZB_SERVICE, "Password", lul_device, "")
+	luup.variable_set(RAZB_SERVICE, "Session", "", lul_device)
+
 	if (debugmode=="1") then
 		DEBUG_MODE = true
 		UserMessage("Enabling debug mode for device:"..lul_device,TASK_BUSY)
@@ -372,10 +466,8 @@ function startupDeferred(lul_device)
 		luup.variable_set(RAZB_SERVICE, "Version", version, lul_device)
 	end	
 	
-	
 	-- start handlers
-	registerHandlers()
-
+	luup.register_handler("myRAZB_Handler","RAZB_Handler")
 
 	-- NOTHING to start 
 	if( luup.version_branch == 1 and luup.version_major == 7) then
@@ -383,14 +475,18 @@ function startupDeferred(lul_device)
 	else
 		luup.set_failure(false,lul_device)	-- should be 0 in UI7
 	end
-
-	-- 
+	
 	log("startup completed")
+	
+	-- get data
+	getZWay(lul_device)
 end
 		
 function initstatus(lul_device)
 	lul_device = tonumber(lul_device)
 	this_device = lul_device
+	this_ipaddr = getIP()
+
 	log("initstatus("..lul_device..") starting version: "..version)	
 	checkVersion(lul_device)
 
