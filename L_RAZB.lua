@@ -359,7 +359,7 @@ local function getAuthCookie(lul_device,user,password)
 end
 
 local function myHttp(url,method,data)
-	debug(string.format("myHttp (%s,%s) (%s,%s) data:%s",method,url,user or '',password or '',data or ''))
+	debug(string.format("myHttp (%s,%s)  data:%s",method,url,data or ''))
 	-- local data = "contents="..plugin
 	local sessiontoken = getSetVariable(RAZB_SERVICE, "Session", lul_device, "")
 	if ( sessiontoken=="" or sessiontoken==nil) then
