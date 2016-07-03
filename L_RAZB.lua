@@ -333,7 +333,7 @@ local function getAuthCookie(lul_device,user,password)
 	local response_body = {}
 	local commonheaders = {
 			["Accept"]="application/json, text/plain, */*",
-			["Accept-Encoding"]="gzip, deflate",
+			-- ["Accept-Encoding"]="gzip, deflate",
 			["Content-Type"] = "application/json;charset=UTF-8",
 			["Content-Length"] = data:len(),
 			["User-agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36",
@@ -370,7 +370,7 @@ local function myHttp(url,method,data)
 	local response_body = {}
 	local commonheaders = {
 			["Accept"]="application/json, text/plain, */*",
-			["Accept-Encoding"]="gzip, deflate",
+			-- ["Accept-Encoding"]="gzip, deflate",
 			["Content-Type"] = "application/json;charset=UTF-8",
 			["Content-Length"] = data:len(),
 			["User-agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36",
@@ -422,6 +422,19 @@ local function getZWay(lul_device,forcedtimestamp)
 		local obj = json.decode(result)
 		timestamp = obj.updateTime
 		debug(string.format("Next timestamp: %s",timestamp))
+		local handle = luup.chdev.start(lul_device);
+		for k,v in pairs(obj.devices) do
+			-- luup.chdev.append(
+				-- lul_device, handle, 		-- parent device and handle
+				-- k, v.data.deviceTypeString.value, 		-- id and description
+				-- devicetype, 	-- device type
+				-- "D_IPhone.xml", "I_IPhone.xml", -- device filename and implementation filename
+				-- newparams, 						-- uPNP child device parameters: "service,variable=value\nservice..."
+				-- true,							-- embedded
+				-- false							-- invisible
+			-- )
+		end
+		luup.chdev.sync(lul_device, handle)
 	end
 end
 
