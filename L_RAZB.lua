@@ -521,13 +521,13 @@ end
 
 local function findDeviceDescription( zway_device )
 	-- avoid the "Static PC Controller" itself, we will use the parent root object for that
-	if (zway_device.genericType.value==2 and zway_device.specificType.value==1) then
+	if (zway_device.data.genericType.value==2 and zway_device.data.specificType.value==1) then
 		return nil
 	end
 	
 	-- return a device description in VERA's terms
 	return {
-		["name"]="New Device",
+		["name"]=zway_device.data.givenName.value or "New Device",
 		["devicetype"]="urn:schemas-upnp-org:device:BinaryLight:1",
 		["DFile"]="D_BinaryLight1.xml",
 		["IFile"]="",
