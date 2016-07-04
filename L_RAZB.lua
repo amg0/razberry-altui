@@ -511,6 +511,24 @@ local function myHttp(url,method,data)
 	return -1
 end
 
+------------------------------------------------
+-- Child Device Actions
+------------------------------------------------
+function UserSetPowerTarget(lul_device,newTargetValue)
+	log(string.format("UserSetPowerTarget(%s,%s)",lul_device,newTargetValue))
+	local zwid = luup.attr_get('altid',lul_device)
+	newTargetValue = tonumber(newTargetValue)
+	if (newTargetValue >0) then
+		newTargetValue = 255
+	end
+
+	local url = string.format(
+		"http://127.0.0.1:8083/ZWave.zway/Run/devices[%s].instances[0].commandClasses[%s].Set(%s)",
+		zwid,
+		37,
+		newTargetValue)
+	return myHttp(url,"POST","")
+end
 
 ------------------------------------------------
 -- Device Map
@@ -531,7 +549,7 @@ local function findDeviceDescription( zway_device )
 		["devicetype"]="urn:schemas-upnp-org:device:BinaryLight:1",
 		["DFile"]="D_BinaryLight1.xml",
 		["IFile"]="",
-		["Parameters"]="",	-- "service,variable=value\nservice..."
+		["Parameters"]="urn:upnp-org:serviceId:SwitchPower1,Status=0\nurn:upnp-org:serviceId:SwitchPower1,Target=0",	-- "service,variable=value\nservice..."
 	}
 end
 
