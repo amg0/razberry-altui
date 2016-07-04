@@ -25,6 +25,8 @@ local modurl = require "socket.url"
 local this_device
 local this_ipaddr
 
+-- Wiki doc
+-- http://wiki.micasaverde.com/index.php/ZWave_Debugging
 -- mapping zWave to D_XML
 -- https://github.com/yepher/RaZBerry/blob/master/README.md
 -- <DeviceClasses>
@@ -511,14 +513,49 @@ end
 
 
 ------------------------------------------------
+-- Device Map
+------------------------------------------------
+
+-- in the future this will be a intelligent map that takes manufid, productid, generic class, specific class as input
+-- and deliver the right structure like below to create VERA devices
+
+local function findDeviceDescription( zway_device )
+	-- avoid the "Static PC Controller" itself, we will use the parent root object for that
+	if (zway_device.genericType.value==2 and zway_device.specificType.value==1) then
+		return nil
+	end
+	
+	-- return a device description in VERA's terms
+	return {
+		["name"]="New Device",
+		["devicetype"]="urn:schemas-upnp-org:device:BinaryLight:1",
+		["DFile"]="D_BinaryLight1.xml",
+		["IFile"]="",
+		["Parameters"]="",	-- "service,variable=value\nservice..."
+	}
+end
+
+------------------------------------------------
 -- Get Status
 ------------------------------------------------
-local timestamp = 0
+local timestamp = 0		-- last timestamp received
 
-local function getZWay(lul_device,forcedtimestamp)
+local function updateDeviceFromZWayData( childId, zway_device )
+	luup.attr_set( "manufacturer", zway_device.data.vendorString.value , childId)
+	setVariableIfChanged(
+		"urn:upnp-org:serviceId:razb1", "ZW_PID", 
+		string.format("%s-%s-%s",
+			zway_device.data.manufacturerId.value,
+			zway_device.data.manufacturerProductType.value,
+			zway_device.data.manufacturerProductId.value), 
+		childId)
+end
+
+local function getZWayData(lul_device,forcedtimestamp)
 	if (forcedtimestamp==nil) then
 		forcedtimestamp = timestamp
 	end
+	debug(string.format("getZWayData(%s,%s)",lul_device,forcedtimestamp))
 
 	local url = string.format("http://%s:8083/ZWave.zway/Data/%s",this_ipaddr,forcedtimestamp)
 	local user = getSetVariable(RAZB_SERVICE, "User", lul_device, "admin")
@@ -526,22 +563,36 @@ local function getZWay(lul_device,forcedtimestamp)
 	local result = myHttp(url,"POST","")
 	if (result ~= -1) then
 		local obj = json.decode(result)
-		timestamp = obj.updateTime
+		timestamp = obj.updateTime	-- last timestamp received
 		debug(string.format("Next timestamp: %s",timestamp))
 		local handle = luup.chdev.start(lul_device);
 		for k,v in pairs(obj.devices) do
-			-- luup.chdev.append(
-				-- lul_device, handle, 		-- parent device and handle
-				-- k, v.data.deviceTypeString.value, 		-- id and description
-				-- devicetype, 	-- device type
-				-- "D_IPhone.xml", "I_IPhone.xml", -- device filename and implementation filename
-				-- newparams, 						-- uPNP child device parameters: "service,variable=value\nservice..."
-				-- true,							-- embedded
-				-- false							-- invisible
-			-- )
+			local descr = findDeviceDescription(v)
+			if (descr ~= nil) then
+				debug(string.format("Creating device for zway dev #%s",k))
+				luup.chdev.append(
+					lul_device, handle, 	-- parent device and handle
+					k, descr.name, 				-- id and description
+					descr.devicetype, 		-- device type
+					descr.DFile, descr.IFile, -- device filename and implementation filename
+					descr.Parameters, 				-- uPNP child device parameters: "service,variable=value\nservice..."
+					false,							-- embedded
+					false								-- invisible
+				)
+			end
 		end
+		debug(string.format("luup.chdev.sync"))
 		luup.chdev.sync(lul_device, handle)
+		debug(string.format("Updating Vera devices"))
+		for k,zway_device in pairs(obj.devices) do
+			local child_idx, child_v = findChild( lul_device, k )
+			if (child_idx ~= nil) then
+				updateDeviceFromZWayData( child_idx, zway_device )
+			end
+		end
 	end
+	
+	debug(string.format("getZWayData done"))
 end
 
 ------------------------------------------------
@@ -596,13 +647,14 @@ function startupDeferred(lul_device)
 	log("startup completed")
 	
 	-- get data
-	getZWay(lul_device)
+	getZWayData(lul_device)
+
 end
 		
 function initstatus(lul_device)
 	lul_device = tonumber(lul_device)
 	this_device = lul_device
-	this_ipaddr = getIP()
+	this_ipaddr = "127.0.0.1"
 
 	log("initstatus("..lul_device..") starting version: "..version)	
 	checkVersion(lul_device)

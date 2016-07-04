@@ -14,7 +14,7 @@
     <modelName>Razberry for openLuup</modelName>
     <modelNumber>1</modelNumber>
     <protocol>cr</protocol>
-    <handleChildren>0</handleChildren>
+    <handleChildren>1</handleChildren>
 	<serviceList>
       <service>
         <serviceType>urn:schemas-upnp-org:service:razb:1</serviceType>
