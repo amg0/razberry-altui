@@ -565,9 +565,19 @@ local function updateSwitchBinary( lul_device , cmdClass )
 	setVariableIfChanged("urn:upnp-org:serviceId:SwitchPower1", "Target", value, lul_device)
 end
 
+local function updateSensorMultiLevel( lul_device , cmdClass )
+	debug(string.format("updateSensorMultiLevel(%s,%s)",lul_device,json.encode(cmdClass)))
+	-- Incomplete code : 
+	-- for now, just decode the Power sensor
+	if (cmdClass.data["4"] ~= nil) then
+		local power = cmdClass.data["4"].val.value
+		setVariableIfChanged("urn:micasaverde-com:serviceId:EnergyMetering1", "Watts", power, lul_device)
+	end
+end
  -- one entry per cmdClass which we know how to decode and update VERA device from
 local updateCommandClassDataMap = {
-	["37"] = updateSwitchBinary
+	["37"] = updateSwitchBinary,
+	["49"] = updateSensorMultiLevel
 }
 
 ------------------------------------------------
