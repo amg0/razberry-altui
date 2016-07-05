@@ -574,7 +574,12 @@ local function updateDeviceFromZWayData( childId, zway_device )
 		childId)
 end
 
-local function getZWayData(lul_device,forcedtimestamp)
+local function updateDevices( lul_device, zway_data ) 
+	debug(string.format("updateDevices(%s,%s)",lul_device,json.encode(zway_data)))
+end
+
+function getZWayData(lul_device,forcedtimestamp)
+	lul_device = tonumber(lul_device)
 	if (forcedtimestamp==nil) then
 		forcedtimestamp = timestamp
 	end
@@ -586,36 +591,45 @@ local function getZWayData(lul_device,forcedtimestamp)
 	local result = myHttp(url,"POST","")
 	if (result ~= -1) then
 		local obj = json.decode(result)
-		timestamp = obj.updateTime	-- last timestamp received
-		debug(string.format("Next timestamp: %s",timestamp))
-		local handle = luup.chdev.start(lul_device);
-		for k,v in pairs(obj.devices) do
-			local descr = findDeviceDescription(v)
-			if (descr ~= nil) then
-				debug(string.format("Creating device for zway dev #%s",k))
-				luup.chdev.append(
-					lul_device, handle, 	-- parent device and handle
-					k, descr.name, 				-- id and description
-					descr.devicetype, 		-- device type
-					descr.DFile, descr.IFile, -- device filename and implementation filename
-					descr.Parameters, 				-- uPNP child device parameters: "service,variable=value\nservice..."
-					false,							-- embedded
-					false								-- invisible
-				)
+		if (timestamp==0) then
+			-- very first update
+			timestamp = obj.updateTime	-- last timestamp received
+			debug(string.format("First refresh -- Next timestamp: %s",timestamp))
+			local handle = luup.chdev.start(lul_device);
+			for k,v in pairs(obj.devices) do
+				local descr = findDeviceDescription(v)
+				if (descr ~= nil) then
+					debug(string.format("Creating device for zway dev #%s",k))
+					luup.chdev.append(
+						lul_device, handle, 	-- parent device and handle
+						k, descr.name, 				-- id and description
+						descr.devicetype, 		-- device type
+						descr.DFile, descr.IFile, -- device filename and implementation filename
+						descr.Parameters, 				-- uPNP child device parameters: "service,variable=value\nservice..."
+						false,							-- embedded
+						false								-- invisible
+					)
+				end
 			end
-		end
-		debug(string.format("luup.chdev.sync"))
-		luup.chdev.sync(lul_device, handle)
-		debug(string.format("Updating Vera devices"))
-		for k,zway_device in pairs(obj.devices) do
-			local child_idx, child_v = findChild( lul_device, k )
-			if (child_idx ~= nil) then
-				updateDeviceFromZWayData( child_idx, zway_device )
+			debug(string.format("luup.chdev.sync"))
+			luup.chdev.sync(lul_device, handle)
+			debug(string.format("Updating Vera devices"))
+			for k,zway_device in pairs(obj.devices) do
+				local child_idx, child_v = findChild( lul_device, k )
+				if (child_idx ~= nil) then
+					updateDeviceFromZWayData( child_idx, zway_device )
+				end
 			end
+		else
+			-- refresh updates
+			timestamp = obj.updateTime	-- last timestamp received
+			updateDevices(lul_device,obj)
+			debug(string.format("Regular refresh -- Next timestamp: %s",timestamp))
 		end
 	end
 	
-	debug(string.format("getZWayData done"))
+	debug(string.format("getZWayData done, new timestamp=%s os.time=%s",timestamp,os.time()))
+	luup.call_delay("getZWayData",2,tostring(lul_device))	
 end
 
 ------------------------------------------------
