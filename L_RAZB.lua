@@ -514,20 +514,25 @@ end
 ------------------------------------------------
 -- Child Device Actions
 ------------------------------------------------
-function UserSetPowerTarget(lul_device,newTargetValue)
+local function UserSetPowerTarget(lul_device,lul_settings)
+	local newTargetValue = tonumber(lul_settings.newTargetValue)
 	log(string.format("UserSetPowerTarget(%s,%s)",lul_device,newTargetValue))
 	local zwid = luup.attr_get('altid',lul_device)
-	newTargetValue = tonumber(newTargetValue)
 	if (newTargetValue >0) then
 		newTargetValue = 255
 	end
 
 	local url = string.format(
-		"http://127.0.0.1:8083/ZWave.zway/Run/devices[%s].instances[0].commandClasses[%s].Set(%s)",
+		"http://%s:8083/ZWave.zway/Run/devices[%s].instances[0].commandClasses[%s].Set(%s)",
+		this_ipaddr,
 		zwid,
 		37,
 		newTargetValue)
 	return myHttp(url,"POST","")
+end
+
+local function generic_action (serviceId, name)
+  return {run = UserSetPowerTarget}    -- TODO: map per name
 end
 
 ------------------------------------------------
@@ -675,14 +680,11 @@ function initstatus(lul_device)
 	this_ipaddr = "127.0.0.1"
 
 	log("initstatus("..lul_device..") starting version: "..version)	
+	math.randomseed( os.time() )
 	checkVersion(lul_device)
 
 	local delay = 10		-- delaying first refresh by x seconds
-	debug("initstatus("..lul_device..") startup for Root device, delay:"..delay)
-	
-	-- almost random seed
-	math.randomseed( os.time() )
-	
+	luup.devices[lul_device].action_callback (generic_action)     -- catch all undefined action calls
 	luup.call_delay("startupDeferred", delay, tostring(lul_device))		
 end
  

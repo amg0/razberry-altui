@@ -12,12 +12,5 @@
 		setDebugMode(lul_device,lul_settings.newDebugMode)
 		</run>
 	</action>
-	<action>
-		<serviceId>urn:upnp-org:serviceId:SwitchPower1</serviceId>
-		<name>SetTarget</name>
-		<run>
-		UserSetPowerTarget(lul_device,lul_settings.newTargetValue)
-		</run>
-	</action>
 </actionList>
 </implementation>
