@@ -12,7 +12,7 @@ local RAZB_SERVICE = "urn:upnp-org:serviceId:razb1"
 local devicetype = "urn:schemas-upnp-org:device:razb:1"
 local DEBUG_MODE = false	-- controlled by UPNP action
 local WFLOW_MODE = false	-- controlled by UPNP action
-local version = "v0.01"
+local version = "v0.02"
 local UI7_JSON_FILE= "D_RAZB.json"
 local json = require("dkjson")
 
@@ -22,6 +22,10 @@ local http = require("socket.http")
 local https = require ("ssl.https")
 local ltn12 = require("ltn12")
 local modurl = require "socket.url"
+
+local DATA_REFRESH_RATE = 2		-- refresh rate from zway
+local timestamp = 0						-- last timestamp received
+local zway_tree = {}						-- zWay data model tree ( agregates all info as we receives it )
 local this_device
 local this_ipaddr
 
@@ -151,16 +155,6 @@ end
 
 local function error(stuff)
 	log("error: " .. stuff, 1)
-end
-
--- local function dumpString(str)
-	-- for i=1,str:len() do
-		-- debug(string.format("i:%d c:%d char:%s",i,str:byte(i),str:sub(i,i) ))
-	-- end
--- end
-
-function string.starts(String,Start)
-   return string.sub(String,1,string.len(Start))==Start
 end
 
 local function isempty(s)
@@ -331,11 +325,7 @@ local function Trim(str)
   return str:match "^%s*(.-)%s*$"
 end
 
-------------------------------------------------
--- VERA Device Utils
-------------------------------------------------
-
-function tablelength(T)
+local function TableLength(T)
   local count = 0
   if (T~=nil) then
 	for _ in pairs(T) do count = count + 1 end
@@ -350,6 +340,9 @@ function inTable(tbl, item)
     return false
 end
 
+--------------------------------------------------------
+-- VERA utils
+--------------------------------------------------------
 local function getParent(lul_device)
 	return luup.devices[lul_device].device_num_parent
 end
@@ -430,7 +423,7 @@ function myRAZB_Handler(lul_request, lul_parameters, lul_outputformat)
 end
 
 ------------------------------------------------
--- Get Status
+-- Razberry ZWay communications
 ------------------------------------------------
 local function getAuthCookie(lul_device,user,password)
 	debug(string.format("getAuthCookie (%s,%s)",user or '',password or ''))
@@ -512,7 +505,7 @@ local function myHttp(url,method,data)
 end
 
 ------------------------------------------------
--- Child Device Actions
+-- Child Device Actions / VERA => ZWay
 ------------------------------------------------
 local function UserSetPowerTarget(lul_device,lul_settings)
 	local newTargetValue = tonumber(lul_settings.newTargetValue)
@@ -535,12 +528,11 @@ local function generic_action (serviceId, name)
   return {run = UserSetPowerTarget}    -- TODO: map per name
 end
 
-------------------------------------------------
+------------------------------------------------------------------------------------------------
 -- Device Map
-------------------------------------------------
-
 -- in the future this will be a intelligent map that takes manufid, productid, generic class, specific class as input
 -- and deliver the right structure like below to create VERA devices
+------------------------------------------------------------------------------------------------
 
 local function findDeviceDescription( zway_device )
 	-- avoid the "Static PC Controller" itself, we will use the parent root object for that
@@ -558,24 +550,76 @@ local function findDeviceDescription( zway_device )
 	}
 end
 
-------------------------------------------------
--- Get Status
-------------------------------------------------
-local timestamp = 0		-- last timestamp received
 
-local function updateDeviceFromZWayData( childId, zway_device )
+------------------------------------------------
+-- Update Vera Devices from zWay Cmd Class data
+-- ZWay => VERA
+------------------------------------------------
+local function updateSwitchBinary( lul_device , cmdClass )
+	debug(string.format("updateSwitchBinary(%s,%s)",lul_device,json.encode(cmdClass)))
+	local value = 0
+	if (cmdClass.data.level.value==true) then
+		value = 1
+	end
+	setVariableIfChanged("urn:upnp-org:serviceId:SwitchPower1", "Status", value, lul_device)
+	setVariableIfChanged("urn:upnp-org:serviceId:SwitchPower1", "Target", value, lul_device)
+end
+
+ -- one entry per cmdClass which we know how to decode and update VERA device from
+local updateCommandClassDataMap = {
+	["37"] = updateSwitchBinary
+}
+
+------------------------------------------------
+-- ZWAY data gathering loop
+------------------------------------------------
+local function initDeviceFromZWayData( childId, zway_device )
+	debug(string.format("initDeviceFromZWayData(%s,%s)",childId,json.encode(zway_device)))
 	luup.attr_set( "manufacturer", zway_device.data.vendorString.value , childId)
 	setVariableIfChanged(
-		"urn:upnp-org:serviceId:razb1", "ZW_PID", 
+		RAZB_SERVICE, "ZW_PID", 
 		string.format("%s-%s-%s",
 			zway_device.data.manufacturerId.value,
 			zway_device.data.manufacturerProductType.value,
 			zway_device.data.manufacturerProductId.value), 
 		childId)
+		
+	-- update all cmdclass from all instances if cmdClass is known in the 
+	-- update function map
+	for instance_id,instance in pairs(zway_device.instances) do 
+		for cmdClass_id,cmdClass in pairs(instance.commandClasses) do 
+			local updateFunc = updateCommandClassDataMap[cmdClass_id]
+			if (updateFunc ~= nil) then
+				(updateFunc)(childId, cmdClass)
+			else
+				debug(string.format("Unknown cmdClass '%s', ignoring update",cmdClass_id))
+			end
+		end		
+	end
 end
 
-local function updateDevices( lul_device, zway_data ) 
-	debug(string.format("updateDevices(%s,%s)",lul_device,json.encode(zway_data)))
+local function refreshDevices( lul_device, zway_data ) 
+	debug(string.format("refreshDevices(%s,%s)",lul_device,json.encode(zway_data)))
+	for k,v in pairs(zway_data) do
+		local devid,instid,cls,variable = k:match("devices%.(%d+)%.instances%.(%d+).commandClasses.(%d+).data.(.+)")
+		-- debug( string.format("devid:%s,instid:%s,cls:%s,variable:%s",devid or 'unk',instid or 'unk',cls or 'unk',variable or 'unk') )
+		if (devid ~= nil ) then
+			local vera_id, child_v = findChild( lul_device, devid )
+			if (vera_id ~= nil) then
+				zway_tree.devices[devid].instances[instid].commandClasses[cls].data[variable] = v
+				local updateFunc = updateCommandClassDataMap[cls]
+				if (updateFunc ~= nil) then
+					(updateFunc)(vera_id, zway_tree.devices[devid].instances[instid].commandClasses[cls])
+				else
+					debug(string.format("Unknown cmdClass '%s', ignoring update",cls))
+				end				
+			else
+				debug("Unknown zWay device "..devid )
+			end
+		else
+				debug("ignoring zway update key "..k)
+		end
+	end
 end
 
 function getZWayData(lul_device,forcedtimestamp)
@@ -593,10 +637,11 @@ function getZWayData(lul_device,forcedtimestamp)
 		local obj = json.decode(result)
 		if (timestamp==0) then
 			-- very first update
-			timestamp = obj.updateTime	-- last timestamp received
+			zway_tree = obj
+			timestamp = zway_tree.updateTime	-- last timestamp received
 			debug(string.format("First refresh -- Next timestamp: %s",timestamp))
 			local handle = luup.chdev.start(lul_device);
-			for k,v in pairs(obj.devices) do
+			for k,v in pairs(zway_tree.devices) do
 				local descr = findDeviceDescription(v)
 				if (descr ~= nil) then
 					debug(string.format("Creating device for zway dev #%s",k))
@@ -614,22 +659,22 @@ function getZWayData(lul_device,forcedtimestamp)
 			debug(string.format("luup.chdev.sync"))
 			luup.chdev.sync(lul_device, handle)
 			debug(string.format("Updating Vera devices"))
-			for k,zway_device in pairs(obj.devices) do
+			for k,zway_device in pairs(zway_tree.devices) do
 				local child_idx, child_v = findChild( lul_device, k )
 				if (child_idx ~= nil) then
-					updateDeviceFromZWayData( child_idx, zway_device )
+					initDeviceFromZWayData( child_idx, zway_device )
 				end
 			end
 		else
 			-- refresh updates
 			timestamp = obj.updateTime	-- last timestamp received
-			updateDevices(lul_device,obj)
+			refreshDevices(lul_device,obj)
 			debug(string.format("Regular refresh -- Next timestamp: %s",timestamp))
 		end
 	end
 	
 	debug(string.format("getZWayData done, new timestamp=%s os.time=%s",timestamp,os.time()))
-	luup.call_delay("getZWayData",2,tostring(lul_device))	
+	luup.call_delay("getZWayData",DATA_REFRESH_RATE,tostring(lul_device))	
 end
 
 ------------------------------------------------
@@ -651,8 +696,8 @@ function startupDeferred(lul_device)
 		DEBUG_MODE = true
 		UserMessage("Enabling debug mode for device:"..lul_device,TASK_BUSY)
 	end
+	
 	local major,minor = 0,0
-	local tbl={}
 	
 	if (oldversion~=nil) then
 		major,minor = string.match(oldversion,"v(%d+)%.(%d+)")
