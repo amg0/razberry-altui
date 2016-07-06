@@ -613,10 +613,26 @@ end
 local function updateSensorBinary( lul_device , cmdClass )
 	debug(string.format("updateSensorBinary(%s,%s)",lul_device,json.encode(cmdClass)))
 	-- Incomplete code : 
-	-- for now, just decode the Power sensor
+	-- for now, just decode the General Purpose sensor
+-- 1 = General Purpose
+-- 2 = Smoke
+-- 3 = Carbon Monoxide
+-- 4 = Carbon Dioxide
+-- 5 = Heat
+-- 6 = Water
+-- 7 = Freeze
+-- 8 = Tamper
+-- 9 = Aux
+-- 10 = Door/Window
+-- 11 = Tilt
+-- 12 = Motion
+-- 13 = Glass Break
 	if (cmdClass.data["1"] ~= nil) then
-		local zz = cmdClass.data["1"].level.value
-		setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "Tripped", zz, lul_device)
+		local result = "0"
+		if (cmdClass.data["1"].level.value == true ) then
+			result = "1"
+		end
+		setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "Tripped", result, lul_device)
 	end
 end
 
