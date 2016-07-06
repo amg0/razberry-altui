@@ -12,7 +12,7 @@ local RAZB_SERVICE = "urn:upnp-org:serviceId:razb1"
 local devicetype = "urn:schemas-upnp-org:device:razb:1"
 local DEBUG_MODE = false	-- controlled by UPNP action
 local WFLOW_MODE = false	-- controlled by UPNP action
-local version = "v0.02"
+local version = "v0.03"
 local UI7_JSON_FILE= "D_RAZB.json"
 local json = require("dkjson")
 
@@ -193,7 +193,7 @@ local function getSetVariableIfEmpty(serviceId, name, deviceId, default)
 end
 
 local function setVariableIfChanged(serviceId, name, value, deviceId)
-	debug(string.format("setVariableIfChanged(%s,%s,%s,%s)",serviceId, name, value, deviceId))
+	debug(string.format("setVariableIfChanged(%s,%s,%s,%s)",serviceId, name, tostring(value), deviceId))
 	local curValue = luup.variable_get(serviceId, name, deviceId) or ""
 	value = value or ""
 	if (tostring(curValue)~=tostring(value)) then
@@ -509,7 +509,7 @@ end
 ------------------------------------------------
 local function UserSetPowerTarget(lul_device,lul_settings)
 	local newTargetValue = tonumber(lul_settings.newTargetValue)
-	log(string.format("UserSetPowerTarget(%s,%s)",lul_device,newTargetValue))
+	debug(string.format("UserSetPowerTarget(%s,%s)",lul_device,newTargetValue))
 	local zwid = luup.attr_get('altid',lul_device)
 	if (newTargetValue >0) then
 		newTargetValue = 255
@@ -524,8 +524,25 @@ local function UserSetPowerTarget(lul_device,lul_settings)
 	return myHttp(url,"POST","")
 end
 
+-- urn:micasaverde-com:serviceId:SecuritySensor1
+local function UserSetArmed(lul_device,lul_settings)
+	local newArmedValue = tonumber(lul_settings.newArmedValue)
+	debug(string.format("UserSetArmed(%s,%s)",lul_device,newArmedValue))
+	setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "Armed", newArmedValue, lul_device)
+end
+
+local function noop(lul_device) 
+	debug(string.format("Unknown Action (%s)",lul_device))
+end 
+
+local ActionMap = {
+	["urn:micasaverde-com:serviceId:SecuritySensor1.SetArmed"] = UserSetArmed,
+	["urn:upnp-org:serviceId:SwitchPower1.SetTarget"] = UserSetPowerTarget	
+}
 local function generic_action (serviceId, name)
-  return {run = UserSetPowerTarget}    -- TODO: map per name
+	local key = serviceId .. "." .. name
+	debug(string.format("generic_action: %s",key))
+  return { run = ActionMap[key] or noop  }    -- TODO: map per name
 end
 
 ------------------------------------------------------------------------------------------------
@@ -552,9 +569,21 @@ local DeviceDiscoveryTable = {
 			["devicetype"]="urn:schemas-micasaverde-com:device:MotionSensor:1",
 			["DFile"]="D_MotionSensor1.xml",
 			["IFile"]="",
-			["Parameters"]="urn:upnp-org:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
+			["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
 		}
 	},
+	-- { 
+		-- ["manufacturerId"]=271,  Fibaro
+		-- ["manufacturerProductId"]=4096,   Door Window
+		-- ["manufacturerProductType"]=1792,		
+		-- ["result"]={
+			-- ["name"]="Door Lock Device",
+			-- ["devicetype"]="urn:schemas-micasaverde-com:device:MotionSensor:1",
+			-- ["DFile"]="D_MotionSensor1.xml",
+			-- ["IFile"]="",
+			-- ["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
+		-- }
+	-- },
 }
 local function findDeviceDescription( zway_device , instance_id )
 	local unknown_device = {
@@ -564,11 +593,6 @@ local function findDeviceDescription( zway_device , instance_id )
 		["IFile"]="",
 		["Parameters"]="",	-- "service,variable=value\nservice..."
 	}
-	
-	-- avoid the "Static PC Controller" itself, we will use the parent root object for that
-	if (zway_device.data.genericType.value==2 and zway_device.data.specificType.value==1) then
-		return nil
-	end
 	
 	-- return a device description in VERA's terms
 	local result = unknown_device
@@ -610,37 +634,57 @@ local function updateSensorMultiLevel( lul_device , cmdClass )
 		setVariableIfChanged("urn:micasaverde-com:serviceId:EnergyMetering1", "Watts", power, lul_device)
 	end
 end
+
 local function updateSensorBinary( lul_device , cmdClass )
 	debug(string.format("updateSensorBinary(%s,%s)",lul_device,json.encode(cmdClass)))
 	-- Incomplete code : 
 	-- for now, just decode the General Purpose sensor
--- 1 = General Purpose
--- 2 = Smoke
--- 3 = Carbon Monoxide
--- 4 = Carbon Dioxide
--- 5 = Heat
--- 6 = Water
--- 7 = Freeze
--- 8 = Tamper
--- 9 = Aux
--- 10 = Door/Window
--- 11 = Tilt
--- 12 = Motion
--- 13 = Glass Break
+	-- 1 = General Purpose
+	-- 2 = Smoke
+	-- 3 = Carbon Monoxide
+	-- 4 = Carbon Dioxide
+	-- 5 = Heat
+	-- 6 = Water
+	-- 7 = Freeze
+	-- 8 = Tamper
+	-- 9 = Aux
+	-- 10 = Door/Window
+	-- 11 = Tilt
+	-- 12 = Motion
+	-- 13 = Glass Break
 	if (cmdClass.data["1"] ~= nil) then
 		local result = "0"
 		if (cmdClass.data["1"].level.value == true ) then
 			result = "1"
 		end
 		setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "Tripped", result, lul_device)
+		if (result=="1") then
+			setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "LastTrip", tostring(cmdClass.data["1"].level.updateTime), lul_device)
+		else
+			setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "LastUntrip", tostring(cmdClass.data["1"].level.updateTime), lul_device)
+		end
 	end
+end
+
+local function updateBatteryLevel( lul_device , cmdClass )
+	debug(string.format("updateBatteryLevel(%s,%s)",lul_device,json.encode(cmdClass)))
+	setVariableIfChanged("urn:micasaverde-com:serviceId:HaDevice1", "BatteryLevel", cmdClass.data.last.value, lul_device)
+	setVariableIfChanged("urn:micasaverde-com:serviceId:HaDevice1", "BatteryDate", cmdClass.data.last.updateTime, lul_device)
+end
+
+local function updateWakeUp( lul_device , cmdClass )
+	debug(string.format("updateWakeUp(%s,%s)",lul_device,json.encode(cmdClass)))
+	setVariableIfChanged("urn:micasaverde-com:serviceId:ZWaveDevice1", "LastWakeup", cmdClass.data.lastWakeup.updateTime, lul_device)
+	setVariableIfChanged("urn:micasaverde-com:serviceId:ZWaveDevice1", "WakeupInterval", cmdClass.data.interval.value, lul_device)
 end
 
  -- one entry per cmdClass which we know how to decode and update VERA device from
 local updateCommandClassDataMap = {
 	["37"] = updateSwitchBinary,
 	["48"] = updateSensorBinary,
-	["49"] = updateSensorMultiLevel
+	["49"] = updateSensorMultiLevel,
+	["128"] = updateBatteryLevel,
+	["132"] = updateWakeUp
 }
 
 ------------------------------------------------
@@ -718,19 +762,21 @@ local function resyncZwayDevices(lul_device)
 	local handle = luup.chdev.start(lul_device);
 	for device_id,zway_device in pairs(zway_tree.devices) do
 		-- for all instances
-		for instance_id,instance in pairs(zway_device.instances) do 
-			local descr = findDeviceDescription(zway_device,instance_id)
-			if (descr ~= nil) then
-				debug(string.format("Creating device for zway dev #%s , instance #%s",device_id,instance_id))
-				luup.chdev.append(
-					lul_device, handle, 	-- parent device and handle
-					device_id.."."..instance_id , descr.name, 				-- id and description
-					descr.devicetype, 		-- device type
-					descr.DFile, descr.IFile, -- device filename and implementation filename
-					descr.Parameters, 				-- uPNP child device parameters: "service,variable=value\nservice..."
-					false,							-- embedded
-					false								-- invisible
-				)
+		if (device_id~="1") then
+			for instance_id,instance in pairs(zway_device.instances) do 
+				local descr = findDeviceDescription(zway_device,instance_id)
+				if (descr ~= nil) then
+					debug(string.format("Creating device for zway dev #%s , instance #%s",device_id,instance_id))
+					luup.chdev.append(
+						lul_device, handle, 	-- parent device and handle
+						device_id.."."..instance_id , descr.name, 				-- id and description
+						descr.devicetype, 		-- device type
+						descr.DFile, descr.IFile, -- device filename and implementation filename
+						descr.Parameters, 				-- uPNP child device parameters: "service,variable=value\nservice..."
+						false,							-- embedded
+						false								-- invisible
+					)
+				end
 			end
 		end
 	end
