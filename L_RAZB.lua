@@ -535,19 +535,34 @@ end
 ------------------------------------------------------------------------------------------------
 
 local function findDeviceDescription( zway_device , instance_id )
+	local unknown_device = {
+		["name"]=zway_device.data.givenName.value or "New Unknown Device",
+		["devicetype"]="urn:schemas-upnp-org:device:razb:unk:1",
+		["DFile"]="D_RAZB_UNK.xml",
+		["IFile"]="",
+		["Parameters"]="",	-- "service,variable=value\nservice..."
+	}
+	
 	-- avoid the "Static PC Controller" itself, we will use the parent root object for that
 	if (zway_device.data.genericType.value==2 and zway_device.data.specificType.value==1) then
 		return nil
 	end
 	
 	-- return a device description in VERA's terms
-	return {
-		["name"]=zway_device.data.givenName.value or "New Device",
-		["devicetype"]="urn:schemas-upnp-org:device:BinaryLight:1",
-		["DFile"]="D_BinaryLight1.xml",
-		["IFile"]="",
-		["Parameters"]="urn:upnp-org:serviceId:SwitchPower1,Status=0\nurn:upnp-org:serviceId:SwitchPower1,Target=0",	-- "service,variable=value\nservice..."
-	}
+	local result = unknown_device
+	
+	-- TODO need to implement the detection logic
+	if (zway_device.data.genericType.value== 16) then
+		result = {
+			["name"]=zway_device.data.givenName.value or "New Device",
+			["devicetype"]="urn:schemas-upnp-org:device:BinaryLight:1",
+			["DFile"]="D_BinaryLight1.xml",
+			["IFile"]="",
+			["Parameters"]="urn:upnp-org:serviceId:SwitchPower1,Status=0\nurn:upnp-org:serviceId:SwitchPower1,Target=0",	-- "service,variable=value\nservice..."
+		}
+	end
+	
+	return result
 end
 
 
@@ -668,9 +683,6 @@ local function resyncZwayDevices(lul_device)
 					false,							-- embedded
 					false								-- invisible
 				)
-			else
-				-- unknown device.
-				-- todo have a D_.xml I_.xml for unknown devices and display values/actions based on cmd class supported
 			end
 		end
 	end

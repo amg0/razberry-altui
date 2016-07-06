@@ -3,7 +3,7 @@
 <functions>
 </functions>
 <files>L_RAZB.lua</files>
-<startup>initstatus</startup>
+<startup></startup>
 <actionList>
 </actionList>
 </implementation>
