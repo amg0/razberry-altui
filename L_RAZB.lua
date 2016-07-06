@@ -534,6 +534,28 @@ end
 -- and deliver the right structure like below to create VERA devices
 ------------------------------------------------------------------------------------------------
 
+local DeviceDiscoveryTable = {
+	{ 
+		["genericType"]=16,
+		["result"]={
+			["name"]="Switch Device",
+			["devicetype"]="urn:schemas-upnp-org:device:BinaryLight:1",
+			["DFile"]="D_BinaryLight1.xml",
+			["IFile"]="",
+			["Parameters"]="urn:upnp-org:serviceId:SwitchPower1,Status=0\nurn:upnp-org:serviceId:SwitchPower1,Target=0",	-- "service,variable=value\nservice..."
+		}
+	},
+	{ 
+		["genericType"]=32,
+		["result"]={
+			["name"]="Sensor Device",
+			["devicetype"]="urn:schemas-micasaverde-com:device:MotionSensor:1",
+			["DFile"]="D_MotionSensor1.xml",
+			["IFile"]="",
+			["Parameters"]="urn:upnp-org:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
+		}
+	},
+}
 local function findDeviceDescription( zway_device , instance_id )
 	local unknown_device = {
 		["name"]=zway_device.data.givenName.value or "New Unknown Device",
@@ -552,14 +574,13 @@ local function findDeviceDescription( zway_device , instance_id )
 	local result = unknown_device
 	
 	-- TODO need to implement the detection logic
-	if (zway_device.data.genericType.value== 16) then
-		result = {
-			["name"]=zway_device.data.givenName.value or "New Device",
-			["devicetype"]="urn:schemas-upnp-org:device:BinaryLight:1",
-			["DFile"]="D_BinaryLight1.xml",
-			["IFile"]="",
-			["Parameters"]="urn:upnp-org:serviceId:SwitchPower1,Status=0\nurn:upnp-org:serviceId:SwitchPower1,Target=0",	-- "service,variable=value\nservice..."
-		}
+	for k,record in pairs(DeviceDiscoveryTable) do
+		if (record.genericType ~=nil) then
+			if (zway_device.data.genericType.value == record["genericType"]) then
+				result = record["result"]
+				result["name"] = zway_device.data.givenName.value or result["name"]
+			end
+		end
 	end
 	
 	return result
@@ -589,9 +610,20 @@ local function updateSensorMultiLevel( lul_device , cmdClass )
 		setVariableIfChanged("urn:micasaverde-com:serviceId:EnergyMetering1", "Watts", power, lul_device)
 	end
 end
+local function updateSensorBinary( lul_device , cmdClass )
+	debug(string.format("updateSensorBinary(%s,%s)",lul_device,json.encode(cmdClass)))
+	-- Incomplete code : 
+	-- for now, just decode the Power sensor
+	if (cmdClass.data["1"] ~= nil) then
+		local zz = cmdClass.data["1"].level.value
+		setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "Tripped", zz, lul_device)
+	end
+end
+
  -- one entry per cmdClass which we know how to decode and update VERA device from
 local updateCommandClassDataMap = {
 	["37"] = updateSwitchBinary,
+	["48"] = updateSensorBinary,
 	["49"] = updateSensorMultiLevel
 }
 
