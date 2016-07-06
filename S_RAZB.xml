@@ -1,27 +1,30 @@
 <?xml version="1.0"?>
 <scpd xmlns="urn:schemas-upnp-org:service-1-0">
-    <specVersion>
-        <major>1</major>
-        <minor>0</minor>
-    </specVersion>
-    <serviceStateTable>
-        <stateVariable sendEvents="no">
-            <name>Debug</name>
-            <dataType>boolean</dataType>
-            <defaultValue>0</defaultValue>
-            <shortCode>debug</shortCode>
-        </stateVariable>
+	<specVersion>
+			<major>1</major>
+			<minor>0</minor>
+	</specVersion>
+	<serviceStateTable>
+			<stateVariable sendEvents="no">
+					<name>Debug</name>
+					<dataType>boolean</dataType>
+					<defaultValue>0</defaultValue>
+					<shortCode>debug</shortCode>
+			</stateVariable>
 	</serviceStateTable>
-    <actionList>
-        <action>
-            <name>SetDebug</name>
-            <argumentList>
-                <argument>
-                    <name>newDebugMode</name>
-                    <direction>in</direction>
-                    <relatedStateVariable>Debug</relatedStateVariable>
-                </argument>
-            </argumentList>
-        </action>
+	<actionList>
+			<action>
+					<name>SetDebug</name>
+					<argumentList>
+							<argument>
+									<name>newDebugMode</name>
+									<direction>in</direction>
+									<relatedStateVariable>Debug</relatedStateVariable>
+							</argument>
+					</argumentList>
+			</action>
+			<action>
+					<name>Resync</name>
+			</action>
 	</actionList>
 </scpd>

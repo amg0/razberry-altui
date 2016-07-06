@@ -12,5 +12,12 @@
 		setDebugMode(lul_device,lul_settings.newDebugMode)
 		</run>
 	</action>
+	<action>
+		<serviceId>urn:upnp-org:serviceId:razb1</serviceId>
+		<name>Resync</name>
+		<run>
+		resyncZwayDevices(lul_device)
+		</run>
+	</action>
 </actionList>
 </implementation>
