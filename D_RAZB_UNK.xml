@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <specVersion>
+    <major>1</major>
+    <minor>0</minor>
+  </specVersion>
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:razb:unk:1</deviceType>
+    <staticJson>D_RAZB_UNK.json</staticJson> 
+    <friendlyName>RAZB Unknown</friendlyName>
+    <manufacturer>Amg0</manufacturer>
+    <manufacturerURL>http://www.google.fr/</manufacturerURL>
+    <modelDescription>Unknown Razberry Device</modelDescription>
+    <modelName>Unknown Razberry Device</modelName>
+    <modelNumber>1</modelNumber>
+    <protocol>cr</protocol>
+    <handleChildren>1</handleChildren>
+	<serviceList>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:razb:unk:1</serviceType>
+        <serviceId>urn:upnp-org:serviceId:razbunk1</serviceId>
+        <controlURL>/upnp/control/RAZBUNK1</controlURL>
+        <eventSubURL>/upnp/event/RAZBUNK1</eventSubURL>
+        <SCPDURL>S_RAZB_UNK.xml</SCPDURL>
+      </service>
+    </serviceList>
+    <implementationList>
+      <implementationFile>I_RAZB_UNK.xml</implementationFile>
+    </implementationList>
+  </device>
+</root>
+ 

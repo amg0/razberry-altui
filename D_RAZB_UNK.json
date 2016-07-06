@@ -1,0 +1,212 @@
+{
+  "flashicon": "https://raw.githubusercontent.com/amg0/razberry-altui/master/iconRAZB.png",
+  "default_icon": "https://raw.githubusercontent.com/amg0/razberry-altui/master/iconRAZB.png",
+  "halloIconsDir": "pics\/hallo",
+  "x": "2",
+  "y": "4",
+  "inScene": "1",
+  "doc_url": {
+    "doc_language": 1,
+    "doc_manual": 1,
+    "doc_version": 1,
+    "doc_platform": 0,
+    "doc_page": "https:\/\/github.com\/amg0\/razberry-altui",
+    "doc_forced_url": {
+      "text": "http:\/\/www.google.com"
+    }
+  },
+  "ToggleButton": 1,
+  "Tabs": [
+	{
+		"Label": {
+			"lang_tag": "tabname_control",
+			"text": "Control"
+		},
+		"Position": "1",
+		"TopNavigationTab": "1",
+		"TabType": "flash",
+		"SceneGroup": [
+			{
+				"id": "1",
+				"top": "0",
+				"left": "0",
+				"x": "2",
+				"y": "1"
+			}
+		],
+		"ControlGroup": [
+			{
+				"id": "1",
+				"isSingle": "1",
+				"scenegroup": "1"
+			}
+		],
+		"Control": [
+			{
+				"ControlType": "label",
+				"top": "0",
+				"left": "0",
+				"text_align": "left",
+				"Label": {
+					"lang_tag": "debug_label",
+					"text": "Debug Mode:"
+				},
+				"Display": {
+					"Top": 60,
+					"Left": 10,
+					"Width": 50,
+					"Height": 20
+				}
+			},
+			{
+				"ControlType": "multi_state_button",
+				"top": "0",
+				"left": "0",
+				"Display": {
+					"Top": 50,
+					"Left": 140
+				},
+				"states": [
+					{
+						"Label": {
+							"lang_tag": "debug_on",
+							"text": "Debug"
+						},
+						"ControlGroup": "1",
+						"Display": {
+							"Service": "urn:upnp-org:serviceId:razb1",
+							"Variable": "Debug",
+							"Value": "1"
+						},
+						"Command": {
+							"Service": "urn:upnp-org:serviceId:razb1",
+							"Action": "SetDebug",
+							"Parameters": [
+								{
+									"Name": "newDebugMode",
+									"Value": "1"
+								}
+							]
+						},
+						"ControlCode": "debug_on"
+					},
+					{
+						"Label": {
+							"lang_tag": "debug_off",
+							"text": "UnDebug"
+						},
+						"ControlGroup": "1",
+						"Display": {
+							"Service": "urn:upnp-org:serviceId:razb1",
+							"Variable": "Debug",
+							"Value": "0"
+						},
+						"Command": {
+							"Service": "urn:upnp-org:serviceId:razb1",
+							"Action": "SetDebug",
+							"Parameters": [
+								{
+									"Name": "newDebugMode",
+									"Value": "0"
+								}
+							]
+						},
+						"ControlCode": "debug_off"
+					}
+				]
+			},
+			{
+				"ControlType": "label",
+				"top": "1",
+				"left": "0",
+				"text_align": "left",
+				"Label": {
+					"lang_tag": "altui_version",
+					"text": "Version"
+				},
+				"Display": {
+					"Top": 110,
+					"Left": 10,
+					"Width": 50,
+					"Height": 20
+				}
+			},
+			{
+				"ControlGroup": "2",
+				"ControlType": "variable",
+				"top": "-1",
+				"left": "0",
+				"x": "1",
+				"text_align": "left",
+				"Display": {
+					"Service": "urn:upnp-org:serviceId:razb1",
+					"Variable": "Version",
+					"Top": 130,
+					"Left": 10,
+					"Width": 50,
+					"Height": 20
+				}
+			}
+		]
+	},
+	{
+		"Label": {
+			"lang_tag": "settings",
+			"text": "Settings"
+		},
+		"Position": "2",
+		"TopNavigationTab": "1",
+		"TabType": "javascript",
+		"ScriptName": "J_RAZB.js",
+		"Function": "razb_Settings"
+	},
+	{
+      "Label": {
+        "lang_tag": "advanced",
+        "text": "Advanced"
+      },
+      "Position": "3",
+      "TabType": "javascript",
+      "ScriptName": "shared.js",
+      "Function": "advanced_device"
+    },
+    {
+      "Label": {
+        "lang_tag": "logs",
+        "text": "Logs"
+      },
+      "Position": "4",
+      "TabType": "javascript",
+      "ScriptName": "shared.js",
+      "Function": "device_logs"
+    },
+    {
+      "Label": {
+        "lang_tag": "notifications",
+        "text": "Notifications"
+      },
+      "Position": "5",
+      "TabType": "javascript",
+      "ScriptName": "shared.js",
+      "Function": "device_notifications"
+    },
+	{
+		"Label": {
+			"lang_tag": "ui7_device_scenes",
+			"text": "Scenes"
+		},
+		"Position": "6",
+		"TabType": "javascript",
+		"ScriptName": "shared.js",
+		"Function": "device_scenes"
+	}
+],
+  "sceneList": {
+  },
+  "eventList":{
+  },
+  "eventList2": [
+	],
+  "DeviceType": "urn:schemas-upnp-org:device:razb:1",
+  "device_type": "urn:schemas-upnp-org:device:razb:1"
+}
