@@ -600,7 +600,7 @@ local function findDeviceDescription( zway_device , instance_id )
 	-- TODO need to implement the detection logic
 	for k,record in pairs(DeviceDiscoveryTable) do
 		if (record.genericType ~=nil) then
-			if (zway_device.data.genericType.value == record["genericType"]) then
+			if (zway_device.instances[instance_id].data.genericType.value == record["genericType"]) then
 				result = record["result"]
 				result["name"] = zway_device.data.givenName.value or result["name"]
 			end
