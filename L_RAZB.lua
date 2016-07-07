@@ -428,7 +428,7 @@ end
 local function getAuthCookie(lul_device,user,password)
 	debug(string.format("getAuthCookie (%s,%s)",user or '',password or ''))
 	local sessioncookie = ""
-	local url = "http://192.168.1.19:8083/ZAutomation/api/v1/login"
+	local url = string.format("http://%s:8083/ZAutomation/api/v1/login",this_ipaddr)
 	debug(string.format("getAuthCookie url:%s",url))
 	local data = string.format('{"login":"%s","password":"%s"}',user,password)
 	local response_body = {}
