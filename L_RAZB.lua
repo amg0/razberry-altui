@@ -391,6 +391,7 @@ function myRAZB_Handler(lul_request, lul_parameters, lul_outputformat)
 	-- debug('RAZB_Handler: outputformat is: '..json.encode(lul_outputformat))
 	local lul_html = "";	-- empty return by default
 	local mime_type = "";
+  local hostname, command
 	-- debug("hostname="..hostname)
 	if (hostname=="") then
 		hostname = this_ipaddr
@@ -849,7 +850,7 @@ function startupDeferred(lul_device)
 		major,minor = tonumber(major),tonumber(minor)
 		debug ("Plugin version: "..version.." Device's Version is major:"..major.." minor:"..minor)
 
-		newmajor,newminor = string.match(version,"v(%d+)%.(%d+)")
+		local newmajor,newminor = string.match(version,"v(%d+)%.(%d+)")
 		newmajor,newminor = tonumber(newmajor),tonumber(newminor)
 		debug ("Device's New Version is major:"..newmajor.." minor:"..newminor)
 		
