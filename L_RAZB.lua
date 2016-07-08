@@ -573,18 +573,30 @@ local DeviceDiscoveryTable = {
 			["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
 		}
 	},
-	-- { 
-		-- ["manufacturerId"]=271,  Fibaro
-		-- ["manufacturerProductId"]=4096,   Door Window
-		-- ["manufacturerProductType"]=1792,		
-		-- ["result"]={
-			-- ["name"]="Door Lock Device",
-			-- ["devicetype"]="urn:schemas-micasaverde-com:device:MotionSensor:1",
-			-- ["DFile"]="D_MotionSensor1.xml",
-			-- ["IFile"]="",
-			-- ["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
-		-- }
-	-- },
+	{ 
+		["manufacturerId"]=271,  --Fibaro
+		["manufacturerProductId"]=4096,   -- Door Window
+		["manufacturerProductType"]=1792,		
+		["result"]={
+			["name"]="Door Sensor Device",
+			["devicetype"]="urn:schemas-micasaverde-com:device:DoorSensor:1",
+			["DFile"]="D_DoorSensor1.xml",
+			["IFile"]="",
+			["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
+		}
+	},
+	{ 
+		["manufacturerId"]=271,  --Fibaro
+		["manufacturerProductId"]=4096,   -- Smoke Window
+		["manufacturerProductType"]=3072,		
+		["result"]={
+			["name"]="Smoke Sensor Device",
+			["devicetype"]="urn:schemas-micasaverde-com:device:SmokeSensor:1",
+			["DFile"]="D_SmokeSensor1.xml",
+			["IFile"]="",
+			["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
+		}
+	},
 }
 local function findDeviceDescription( zway_device , instance_id )
 	local unknown_device = {
@@ -598,12 +610,25 @@ local function findDeviceDescription( zway_device , instance_id )
 	-- return a device description in VERA's terms
 	local result = unknown_device
 	
-	-- TODO need to implement the detection logic
+	-- test on product ID matching
 	for k,record in pairs(DeviceDiscoveryTable) do
-		if (record.genericType ~=nil) then
-			if (zway_device.data.genericType.value == record["genericType"]) then
+		if (record.manufacturerId ~=nil) then
+			if (zway_device.data.manufacturerId.value == record["manufacturerId"] and 
+				zway_device.data.manufacturerProductId.value == record["manufacturerProductId"] and
+				zway_device.data.manufacturerProductType.value == record["manufacturerProductType"]  ) then
 				result = record["result"]
 				result["name"] = zway_device.data.givenName.value or result["name"]
+				return result
+			end
+		end
+	end
+	-- test in generic device type matching
+	for k,record in pairs(DeviceDiscoveryTable) do
+		if (record.genericType ~=nil) then
+			if (zway_device.instances[instance_id].data.genericType.value == record["genericType"]) then
+				result = record["result"]
+				result["name"] = zway_device.data.givenName.value or result["name"]
+				return result
 			end
 		end
 	end
