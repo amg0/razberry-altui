@@ -891,11 +891,8 @@ function startupDeferred(lul_device)
 	luup.register_handler("myRAZB_Handler","RAZB_Handler")
 
 	-- NOTHING to start 
-	if( luup.version_branch == 1 and luup.version_major == 7) then
-		luup.set_failure(0,lul_device)	-- should be 0 in UI7
-	else
-		luup.set_failure(false,lul_device)	-- should be 0 in UI7
-	end
+    
+		luup.set_failure(0,lul_device)	-- openLuup is UI7 compatible
 	
 	log("startup completed")
 	
@@ -907,7 +904,9 @@ end
 function initstatus(lul_device)
 	lul_device = tonumber(lul_device)
 	this_device = lul_device
-	this_ipaddr = "127.0.0.1"
+
+  local ip = luup.attr_get ("ip", lul_device)   -- use specified IP, if present
+  this_ipaddr = ip:match "%d+%.%d+%.%d+%.%d+" and ip or ip
 
 	log("initstatus("..lul_device..") starting version: "..version)	
 	math.randomseed( os.time() )
