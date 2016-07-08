@@ -905,8 +905,8 @@ function initstatus(lul_device)
 	lul_device = tonumber(lul_device)
 	this_device = lul_device
 
-  local ip = luup.attr_get ("ip", lul_device)   -- use specified IP, if present
-  this_ipaddr = ip:match "%d+%.%d+%.%d+%.%d+" and ip or ip
+	local ip = luup.attr_get ("ip", lul_device)   -- use specified IP, if present
+	this_ipaddr = ip:match "%d+%.%d+%.%d+%.%d+" and ip or "127.0.0.1"
 
 	log("initstatus("..lul_device..") starting version: "..version)	
 	math.randomseed( os.time() )
