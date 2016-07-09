@@ -598,6 +598,84 @@ local DeviceDiscoveryTable = {
 		}
 	},
 }
+
+local loader = require "openLuup.loader"    -- just keeping this require near the place it's used,
+                                            -- rather than at the start of the file at the moment.
+
+----------------------------------------------------
+
+-- GENERIC DEVICES
+-- blame @akbooer
+
+-- use Generic Type to lookup Vera category, hence generic device type...
+-- ...and from the device file we can then get services...
+-- ...and from the service files, the actions and variables.
+-- returns nil if no match found.
+--
+local function findGenericDevice (zway_device, instance_id)
+  
+  -- map between DeviceClasses and Vera categories and generic devices
+  -- TODO:  add finer detail with instance_id, etc...
+  local DeviceClassMap = {
+    [0x01] = {label="Remote Controller",  category = 1,   upnp_file = "D_SceneController1.xml"},
+    [0x02] = {label="Static Controller",  category = 1,   upnp_file = "D_SceneController1.xml"},
+--    [0x03] = {label="AV Control Point",   category = 15},
+--    [0x04] = {label="Display", command_classes="0x20"},
+    [0x08] = {label="Thermostat",         category = 5,   upnp_file = "D_HVAC_ZoneThermostat1.xml"},
+    [0x09] = {label="Window Covering",    category = 8,   upnp_file = "D_WibdowCovering1.xml"},
+--    [0x0f] = {label="Repeater Slave", command_classes="0x20"},
+    [0x10] = {label="Binary Switch",      category = 3,   upnp_file = "D_BinaryLight1.xml"},
+    [0x11] = {label="Multilevel Switch",  category = 2,   upnp_file = "D_DimmableLight1.xml"},
+    [0x12] = {label="Remote Switch",      category = 3,   upnp_file = "D_BinaryLight1.xml"},
+    [0x13] = {label="Toggle Switch",      category = 3,   upnp_file = "D_BinaryLight1.xml"},
+--    [0x14] = {label="Z/IP Gateway",       category = 19},
+--    [0x15] = {label="Z/IP Node"},
+    [0x16] = {label="Ventilation",        category = 5,   upnp_file = "D_HVAC_ZoneThermostat1.xml"},
+    [0x20] = {label="Binary Sensor",      category = 12,  upnp_file = "D_GenericSensor1.xml"},
+    [0x21] = {label="Multilevel Sensor",  category = 12,  upnp_file = "D_GenericSensor1.xml"},
+    [0x30] = {label="Pulse Meter",        category = 21,  upnp_file = "D_PowerMeter1.xml"},
+    [0x31] = {label="Meter",              category = 21,  upnp_file = "D_PowerMeter1.xml"},
+    [0x40] = {label="Entry Control",      category = 7,   upnp_file = "D_DoorLock1.xml"},
+--    [0x50] = {label="Semi Interoperable"},
+--    [0xa1] = {label="Alarm Sensor",       category = 22},   -- TODO: find generic Alarm Sensor device
+--    [0xff] = {label="Non Interoperable"},
+  }
+
+  local generic = tonumber (zway_device.data.genericType.value) or 0  -- should already be a number
+  local map =  DeviceClassMap[generic]  
+  if map and map.upnp_file then
+    local upnp_file = map.upnp_file
+    local d = loader.read_device (upnp_file)          -- read the device file
+    
+    local p = {}
+    for _, s in ipairs (d.service_list) do
+      if s.SCPDURL then 
+        local svc = loader.read_service (s.SCPDURL)   -- read the service file(s)
+        local parameter = "%s,%s=%s"
+        for _,v in ipairs (svc.variables or {}) do
+          local default = v.defaultValue
+          if default and default ~= '' then            -- only variables with defaults
+            p[#p+1] = parameter: format (s.serviceId, v.name, default)
+          end
+        end
+      end
+    end
+    local parameters = table.concat (p, '\n')
+    
+    return  {
+        name =zway_device.data.givenName.value or upnp_file:match "D_(%D+)%d*%.xml" or '?',
+        devicetype  = d.device_type or "urn:schemas-upnp-org:device:razb:unk:1",
+        DFile       = upnp_file,
+        IFile       = '',
+        Parameters  = parameters,
+      }
+  end
+end
+
+
+----------------------------------------------------
+
+
 local function findDeviceDescription( zway_device , instance_id )
 	local unknown_device = {
 		["name"]=zway_device.data.givenName.value or "New Unknown Device",
@@ -608,6 +686,7 @@ local function findDeviceDescription( zway_device , instance_id )
 	}
 	
 	-- return a device description in VERA's terms
+--	local result = findGenericDevice(zway_device , instance_id) or unknown_device
 	local result = unknown_device
 	
 	-- test on product ID matching
@@ -905,8 +984,8 @@ function initstatus(lul_device)
 	lul_device = tonumber(lul_device)
 	this_device = lul_device
 
-	local ip = luup.attr_get ("ip", lul_device)   -- use specified IP, if present
-	this_ipaddr = ip:match "%d+%.%d+%.%d+%.%d+" and ip or "127.0.0.1"
+  local ip = luup.attr_get ("ip", lul_device)   -- use specified IP, if present
+  this_ipaddr = ip:match "%d+%.%d+%.%d+%.%d+" and ip or "127.0.0.1"
 
 	log("initstatus("..lul_device..") starting version: "..version)	
 	math.randomseed( os.time() )
