@@ -839,17 +839,55 @@ local function initDeviceInstanceFromZWayData( lul_device, zway_device_id, insta
 end
 
 
+local function zWayToVeraNodeInfo(arr)
+	-- debug(string.format("zWayToVeraNodeInfo(%s)",json.encode(arr)))
+	table.sort(arr)
+	local result = {}
+	for k,v in ipairs(arr) do
+		result [ #result +1 ] = string.format("%x",v)
+	end
+	-- debug(string.format("zWayToVeraNodeInfo result(%s)",json.encode(result)))
+	return table.concat(result,",")
+end
+
+local function zWayToVeraNeighbors(lul_device,arr)
+	local result = {}
+	for k,v in ipairs(arr) do
+		local veraDeviceId = findChild(lul_device, v..".0")
+		result [ #result +1 ] = veraDeviceId 
+	end
+	return table.concat(result,",")
+end
+
 local function initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
 	debug(string.format("initDeviceFromZWayData(%s,%s)",zway_device_id,json.encode(zway_device)))
 	for instance_id,instance in pairs(zway_device.instances) do 
 		initDeviceInstanceFromZWayData( lul_device, zway_device_id, instance_id , zway_device )
 	end
+	local veraDeviceId = findChild(lul_device, zway_device_id..".0")
+	setVariableIfChanged(
+		"urn:micasaverde-com:serviceId:ZWaveDevice1","ManufacturerInfo",
+		string.format("%s,%s,%s",
+			zway_device.data.manufacturerId.value,
+			zway_device.data.manufacturerProductType.value,
+			zway_device.data.manufacturerProductId.value),
+		veraDeviceId)
+	setVariableIfChanged(
+		"urn:micasaverde-com:serviceId:ZWaveDevice1","NodeInfo",
+		zWayToVeraNodeInfo(zway_device.data.nodeInfoFrame.value),
+		veraDeviceId)
+	setVariableIfChanged(
+		"urn:micasaverde-com:serviceId:ZWaveDevice1","Neighbors",
+		zWayToVeraNeighbors(lul_device,zway_device.data.neighbours.value),
+		veraDeviceId)
 end
 
 local function refreshDevices( lul_device, zway_data ) 
 	debug(string.format("refreshDevices(%s,%s)",lul_device,json.encode(zway_data)))
 	for k,v in pairs(zway_data) do
 		local devid,instid,cls,variable = k:match("devices%.(%d+)%.instances%.(%d+).commandClasses.(%d+).data.(.+)")
+		--
+		-- try to decode command classes
 		-- debug( string.format("devid:%s,instid:%s,cls:%s,variable:%s",devid or 'unk',instid or 'unk',cls or 'unk',variable or 'unk') )
 		if (devid ~= nil ) then
 			local vera_id, child_v = findChild( lul_device, devid.."."..instid )
@@ -865,7 +903,17 @@ local function refreshDevices( lul_device, zway_data )
 				debug("Unknown zWay device:"..devid )
 			end
 		else
-				debug("ignoring zway update key:"..k)
+				-- try to decode NIF
+				devid = k:match("devices%.(%d+)%.data%.nodeInfoFrame")
+				if (devid ~= nil ) then
+					local vera_id, child_v = findChild( lul_device, devid..".0" )
+					setVariableIfChanged(
+						"urn:micasaverde-com:serviceId:ZWaveDevice1","NodeInfo",
+						zWayToVeraNodeInfo(v.value),
+						vera_id)					
+				else
+					debug("ignoring zway update key:"..k)
+				end
 		end
 	end
 end
@@ -899,7 +947,9 @@ local function resyncZwayDevices(lul_device)
 	
 	debug(string.format("Updating Vera devices"))
 	for zway_device_id,zway_device in pairs(zway_tree.devices) do
-		initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
+		if (zway_device_id~="1") then
+			initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
+		end
 	end
 	return true -- success if it comes here, otherwise luup will reload
 end
