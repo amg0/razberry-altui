@@ -872,14 +872,10 @@ local function initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
 			zway_device.data.manufacturerProductType.value,
 			zway_device.data.manufacturerProductId.value),
 		veraDeviceId)
-	setVariableIfChanged(
-		"urn:micasaverde-com:serviceId:ZWaveDevice1","NodeInfo",
-		zWayToVeraNodeInfo(zway_device.data.nodeInfoFrame.value),
-		veraDeviceId)
-	setVariableIfChanged(
-		"urn:micasaverde-com:serviceId:ZWaveDevice1","Neighbors",
-		zWayToVeraNeighbors(lul_device,zway_device.data.neighbours.value),
-		veraDeviceId)
+	setVariableIfChanged("urn:micasaverde-com:serviceId:ZWaveDevice1","NodeInfo",zWayToVeraNodeInfo(zway_device.data.nodeInfoFrame.value),veraDeviceId)
+	setVariableIfChanged("urn:micasaverde-com:serviceId:ZWaveDevice1","Neighbors",zWayToVeraNeighbors(lul_device,zway_device.data.neighbours.value),veraDeviceId)
+	setVariableIfChanged("urn:micasaverde-com:serviceId:ZWaveDevice1","PollNoReply",0,veraDeviceId)
+	setVariableIfChanged("urn:micasaverde-com:serviceId:ZWaveDevice1","PollOk",0,veraDeviceId)
 end
 
 local function refreshDevices( lul_device, zway_data ) 
