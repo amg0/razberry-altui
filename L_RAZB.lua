@@ -553,26 +553,26 @@ end
 ------------------------------------------------------------------------------------------------
 
 local DeviceDiscoveryTable = {
-	{ 
-		["genericType"]=16,
-		["result"]={
-			["name"]="Switch Device",
-			["devicetype"]="urn:schemas-upnp-org:device:BinaryLight:1",
-			["DFile"]="D_BinaryLight1.xml",
-			["IFile"]="",
-			["Parameters"]="urn:upnp-org:serviceId:SwitchPower1,Status=0\nurn:upnp-org:serviceId:SwitchPower1,Target=0",	-- "service,variable=value\nservice..."
-		}
-	},
-	{ 
-		["genericType"]=32,
-		["result"]={
-			["name"]="Sensor Device",
-			["devicetype"]="urn:schemas-micasaverde-com:device:MotionSensor:1",
-			["DFile"]="D_MotionSensor1.xml",
-			["IFile"]="",
-			["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
-		}
-	},
+	-- { 
+		-- ["genericType"]=16,
+		-- ["result"]={
+			-- ["name"]="Switch Device",
+			-- ["devicetype"]="urn:schemas-upnp-org:device:BinaryLight:1",
+			-- ["DFile"]="D_BinaryLight1.xml",
+			-- ["IFile"]="",
+			-- ["Parameters"]="urn:upnp-org:serviceId:SwitchPower1,Status=0\nurn:upnp-org:serviceId:SwitchPower1,Target=0",	-- "service,variable=value\nservice..."
+		-- }
+	-- },
+	-- { 
+		-- ["genericType"]=32,
+		-- ["result"]={
+			-- ["name"]="Sensor Device",
+			-- ["devicetype"]="urn:schemas-micasaverde-com:device:MotionSensor:1",
+			-- ["DFile"]="D_MotionSensor1.xml",
+			-- ["IFile"]="",
+			-- ["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
+		-- }
+	-- },
 	{ 
 		["manufacturerId"]=271,  --Fibaro
 		["manufacturerProductId"]=4096,   -- Door Window
@@ -582,7 +582,7 @@ local DeviceDiscoveryTable = {
 			["devicetype"]="urn:schemas-micasaverde-com:device:DoorSensor:1",
 			["DFile"]="D_DoorSensor1.xml",
 			["IFile"]="",
-			["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
+			["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\nurn:micasaverde-com:serviceId:SecuritySensor1,Armed=0\n",	-- "service,variable=value\nservice..."
 		}
 	},
 	{ 
@@ -594,7 +594,7 @@ local DeviceDiscoveryTable = {
 			["devicetype"]="urn:schemas-micasaverde-com:device:SmokeSensor:1",
 			["DFile"]="D_SmokeSensor1.xml",
 			["IFile"]="",
-			["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
+			["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\nurn:micasaverde-com:serviceId:SecuritySensor1,Armed=0\n",	-- "service,variable=value\nservice..."
 		}
 	},
 }
@@ -612,6 +612,7 @@ local loader = require "openLuup.loader"    -- just keeping this require near th
 -- ...and from the service files, the actions and variables.
 -- returns nil if no match found.
 --
+
 local function findGenericDevice (zway_device, instance_id)
   
   -- map between DeviceClasses and Vera categories and generic devices
@@ -661,15 +662,18 @@ local function findGenericDevice (zway_device, instance_id)
       end
     end
     local parameters = table.concat (p, '\n')
-    
-    return  {
+    local result = {
         name =zway_device.data.givenName.value or upnp_file:match "D_(%D+)%d*%.xml" or '?',
         devicetype  = d.device_type or "urn:schemas-upnp-org:device:razb:unk:1",
         DFile       = upnp_file,
         IFile       = '',
         Parameters  = parameters,
       }
+		debug(string.format("Applying device mapping based on generic type : %s",json.encode(result)))
+    return result
   end
+	debug(string.format("Did not find a generic type mapping for type: %d",generic))
+	return nil
 end
 
 
@@ -686,10 +690,9 @@ local function findDeviceDescription( zway_device , instance_id )
 	}
 	
 	-- return a device description in VERA's terms
---	local result = findGenericDevice(zway_device , instance_id) or unknown_device
-	local result = unknown_device
+	local result = nil
 	
-	-- test on product ID matching
+	-- test on product ID matching, overriding default mapping
 	for k,record in pairs(DeviceDiscoveryTable) do
 		if (record.manufacturerId ~=nil) then
 			if (zway_device.data.manufacturerId.value == record["manufacturerId"] and 
@@ -697,20 +700,26 @@ local function findDeviceDescription( zway_device , instance_id )
 				zway_device.data.manufacturerProductType.value == record["manufacturerProductType"]  ) then
 				result = record["result"]
 				result["name"] = zway_device.data.givenName.value or result["name"]
+				debug(string.format("Found precise device mapping by manuf+prod ID : %s",json.encode(record)))
 				return result
 			end
 		end
 	end
+	
+	if (result == nil) then
+		result = findGenericDevice(zway_device, instance_id) or unknown_device
+	end
+	
 	-- test in generic device type matching
-	for k,record in pairs(DeviceDiscoveryTable) do
-		if (record.genericType ~=nil) then
-			if (zway_device.instances[instance_id].data.genericType.value == record["genericType"]) then
-				result = record["result"]
-				result["name"] = zway_device.data.givenName.value or result["name"]
-				return result
-			end
-		end
-	end
+	-- for k,record in pairs(DeviceDiscoveryTable) do
+		-- if (record.genericType ~=nil) then
+			-- if (zway_device.instances[instance_id].data.genericType.value == record["genericType"]) then
+				-- result = record["result"]
+				-- result["name"] = zway_device.data.givenName.value or result["name"]
+				-- return result
+			-- end
+		-- end
+	-- end
 	
 	return result
 end
