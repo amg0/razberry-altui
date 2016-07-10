@@ -649,18 +649,20 @@ local function findGenericDevice (zway_device, instance_id)
     local d = loader.read_device (upnp_file)          -- read the device file
     
     local p = {}
-    for _, s in ipairs (d.service_list) do
-      if s.SCPDURL then 
-        local svc = loader.read_service (s.SCPDURL)   -- read the service file(s)
-        local parameter = "%s,%s=%s"
-        for _,v in ipairs (svc.variables or {}) do
-          local default = v.defaultValue
-          if default and default ~= '' then            -- only variables with defaults
-            p[#p+1] = parameter: format (s.serviceId, v.name, default)
-          end
-        end
-      end
-    end
+		if (d.service_list ~=nil) then
+			for _, s in ipairs (d.service_list) do
+				if s.SCPDURL then 
+					local svc = loader.read_service (s.SCPDURL)   -- read the service file(s)
+					local parameter = "%s,%s=%s"
+					for _,v in ipairs (svc.variables or {}) do
+						local default = v.defaultValue
+						if default and default ~= '' then            -- only variables with defaults
+							p[#p+1] = parameter: format (s.serviceId, v.name, default)
+						end
+					end
+				end
+			end
+		end
     local parameters = table.concat (p, '\n')
     local result = {
         name =zway_device.data.givenName.value or upnp_file:match "D_(%D+)%d*%.xml" or '?',
