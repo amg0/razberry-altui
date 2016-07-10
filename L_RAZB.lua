@@ -12,7 +12,7 @@ local RAZB_SERVICE = "urn:upnp-org:serviceId:razb1"
 local devicetype = "urn:schemas-upnp-org:device:razb:1"
 local DEBUG_MODE = false	-- controlled by UPNP action
 local WFLOW_MODE = false	-- controlled by UPNP action
-local version = "v0.03"
+local version = "v0.05"
 local UI7_JSON_FILE= "D_RAZB.json"
 local json = require("dkjson")
 
@@ -553,26 +553,26 @@ end
 ------------------------------------------------------------------------------------------------
 
 local DeviceDiscoveryTable = {
-	{ 
-		["genericType"]=16,
-		["result"]={
-			["name"]="Switch Device",
-			["devicetype"]="urn:schemas-upnp-org:device:BinaryLight:1",
-			["DFile"]="D_BinaryLight1.xml",
-			["IFile"]="",
-			["Parameters"]="urn:upnp-org:serviceId:SwitchPower1,Status=0\nurn:upnp-org:serviceId:SwitchPower1,Target=0",	-- "service,variable=value\nservice..."
-		}
-	},
-	{ 
-		["genericType"]=32,
-		["result"]={
-			["name"]="Sensor Device",
-			["devicetype"]="urn:schemas-micasaverde-com:device:MotionSensor:1",
-			["DFile"]="D_MotionSensor1.xml",
-			["IFile"]="",
-			["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
-		}
-	},
+	-- { 
+		-- ["genericType"]=16,
+		-- ["result"]={
+			-- ["name"]="Switch Device",
+			-- ["devicetype"]="urn:schemas-upnp-org:device:BinaryLight:1",
+			-- ["DFile"]="D_BinaryLight1.xml",
+			-- ["IFile"]="",
+			-- ["Parameters"]="urn:upnp-org:serviceId:SwitchPower1,Status=0\nurn:upnp-org:serviceId:SwitchPower1,Target=0",	-- "service,variable=value\nservice..."
+		-- }
+	-- },
+	-- { 
+		-- ["genericType"]=32,
+		-- ["result"]={
+			-- ["name"]="Sensor Device",
+			-- ["devicetype"]="urn:schemas-micasaverde-com:device:MotionSensor:1",
+			-- ["DFile"]="D_MotionSensor1.xml",
+			-- ["IFile"]="",
+			-- ["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
+		-- }
+	-- },
 	{ 
 		["manufacturerId"]=271,  --Fibaro
 		["manufacturerProductId"]=4096,   -- Door Window
@@ -582,7 +582,7 @@ local DeviceDiscoveryTable = {
 			["devicetype"]="urn:schemas-micasaverde-com:device:DoorSensor:1",
 			["DFile"]="D_DoorSensor1.xml",
 			["IFile"]="",
-			["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
+			["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\nurn:micasaverde-com:serviceId:SecuritySensor1,Armed=0\n",	-- "service,variable=value\nservice..."
 		}
 	},
 	{ 
@@ -594,7 +594,7 @@ local DeviceDiscoveryTable = {
 			["devicetype"]="urn:schemas-micasaverde-com:device:SmokeSensor:1",
 			["DFile"]="D_SmokeSensor1.xml",
 			["IFile"]="",
-			["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\n",	-- "service,variable=value\nservice..."
+			["Parameters"]="urn:micasaverde-com:serviceId:SecuritySensor1,Tripped=0\nurn:micasaverde-com:serviceId:SecuritySensor1,Armed=0\n",	-- "service,variable=value\nservice..."
 		}
 	},
 }
@@ -612,6 +612,7 @@ local loader = require "openLuup.loader"    -- just keeping this require near th
 -- ...and from the service files, the actions and variables.
 -- returns nil if no match found.
 --
+
 local function findGenericDevice (zway_device, instance_id)
   
   -- map between DeviceClasses and Vera categories and generic devices
@@ -631,8 +632,8 @@ local function findGenericDevice (zway_device, instance_id)
 --    [0x14] = {label="Z/IP Gateway",       category = 19},
 --    [0x15] = {label="Z/IP Node"},
     [0x16] = {label="Ventilation",        category = 5,   upnp_file = "D_HVAC_ZoneThermostat1.xml"},
-    [0x20] = {label="Binary Sensor",      category = 12,  upnp_file = "D_GenericSensor1.xml"},
-    [0x21] = {label="Multilevel Sensor",  category = 12,  upnp_file = "D_GenericSensor1.xml"},
+		[0x20] = {label="Binary Sensor", 			category = 4, 	upnp_file = "D_MotionSensor1.xml"},
+    [0x21] = {label="Multilevel Sensor",  category = 12,  upnp_file = "D_MotionSensor1.xml"},  -- D_GenericSensor1
     [0x30] = {label="Pulse Meter",        category = 21,  upnp_file = "D_PowerMeter1.xml"},
     [0x31] = {label="Meter",              category = 21,  upnp_file = "D_PowerMeter1.xml"},
     [0x40] = {label="Entry Control",      category = 7,   upnp_file = "D_DoorLock1.xml"},
@@ -641,35 +642,40 @@ local function findGenericDevice (zway_device, instance_id)
 --    [0xff] = {label="Non Interoperable"},
   }
 
-  local generic = tonumber (zway_device.data.genericType.value) or 0  -- should already be a number
+  local generic = tonumber (zway_device.instances[instance_id].data.genericType.value) or 0  -- should already be a number
   local map =  DeviceClassMap[generic]  
   if map and map.upnp_file then
     local upnp_file = map.upnp_file
     local d = loader.read_device (upnp_file)          -- read the device file
     
     local p = {}
-    for _, s in ipairs (d.service_list) do
-      if s.SCPDURL then 
-        local svc = loader.read_service (s.SCPDURL)   -- read the service file(s)
-        local parameter = "%s,%s=%s"
-        for _,v in ipairs (svc.variables or {}) do
-          local default = v.defaultValue
-          if default and default ~= '' then            -- only variables with defaults
-            p[#p+1] = parameter: format (s.serviceId, v.name, default)
-          end
-        end
-      end
-    end
+		if (d.service_list ~=nil) then
+			for _, s in ipairs (d.service_list) do
+				if s.SCPDURL then 
+					local svc = loader.read_service (s.SCPDURL)   -- read the service file(s)
+					local parameter = "%s,%s=%s"
+					for _,v in ipairs (svc.variables or {}) do
+						local default = v.defaultValue
+						if default and default ~= '' then            -- only variables with defaults
+							p[#p+1] = parameter: format (s.serviceId, v.name, default)
+						end
+					end
+				end
+			end
+		end
     local parameters = table.concat (p, '\n')
-    
-    return  {
+    local result = {
         name =zway_device.data.givenName.value or upnp_file:match "D_(%D+)%d*%.xml" or '?',
         devicetype  = d.device_type or "urn:schemas-upnp-org:device:razb:unk:1",
         DFile       = upnp_file,
         IFile       = '',
         Parameters  = parameters,
       }
+		debug(string.format("Applying device mapping based on generic type : %s",json.encode(result)))
+    return result
   end
+	debug(string.format("Did not find a generic type mapping for type: %d",generic))
+	return nil
 end
 
 
@@ -677,6 +683,8 @@ end
 
 
 local function findDeviceDescription( zway_device , instance_id )
+	debug(string.format("findDeviceDescription for instance %s",instance_id))
+
 	local unknown_device = {
 		["name"]=zway_device.data.givenName.value or "New Unknown Device",
 		["devicetype"]="urn:schemas-upnp-org:device:razb:unk:1",
@@ -686,31 +694,38 @@ local function findDeviceDescription( zway_device , instance_id )
 	}
 	
 	-- return a device description in VERA's terms
---	local result = findGenericDevice(zway_device , instance_id) or unknown_device
-	local result = unknown_device
+	local result = nil
 	
-	-- test on product ID matching
-	for k,record in pairs(DeviceDiscoveryTable) do
-		if (record.manufacturerId ~=nil) then
-			if (zway_device.data.manufacturerId.value == record["manufacturerId"] and 
-				zway_device.data.manufacturerProductId.value == record["manufacturerProductId"] and
-				zway_device.data.manufacturerProductType.value == record["manufacturerProductType"]  ) then
-				result = record["result"]
-				result["name"] = zway_device.data.givenName.value or result["name"]
-				return result
+	-- test on product ID matching, overriding default mapping
+	if (instance_id=="0") then
+		for k,record in pairs(DeviceDiscoveryTable) do
+			if (record.manufacturerId ~=nil) then
+				if (zway_device.data.manufacturerId.value == record["manufacturerId"] and 
+					zway_device.data.manufacturerProductId.value == record["manufacturerProductId"] and
+					zway_device.data.manufacturerProductType.value == record["manufacturerProductType"]  ) then
+					result = record["result"]
+					result["name"] = zway_device.data.givenName.value or result["name"]
+					debug(string.format("Found precise device mapping by manuf+prod ID : %s",json.encode(record)))
+					return result
+				end
 			end
 		end
 	end
+	
+	if (result == nil) then
+		result = findGenericDevice(zway_device, instance_id) or unknown_device
+	end
+	
 	-- test in generic device type matching
-	for k,record in pairs(DeviceDiscoveryTable) do
-		if (record.genericType ~=nil) then
-			if (zway_device.instances[instance_id].data.genericType.value == record["genericType"]) then
-				result = record["result"]
-				result["name"] = zway_device.data.givenName.value or result["name"]
-				return result
-			end
-		end
-	end
+	-- for k,record in pairs(DeviceDiscoveryTable) do
+		-- if (record.genericType ~=nil) then
+			-- if (zway_device.instances[instance_id].data.genericType.value == record["genericType"]) then
+				-- result = record["result"]
+				-- result["name"] = zway_device.data.givenName.value or result["name"]
+				-- return result
+			-- end
+		-- end
+	-- end
 	
 	return result
 end
@@ -734,9 +749,26 @@ local function updateSensorMultiLevel( lul_device , cmdClass )
 	debug(string.format("updateSensorMultiLevel(%s,%s)",lul_device,json.encode(cmdClass)))
 	-- Incomplete code : 
 	-- for now, just decode the Power sensor
+	if (cmdClass.data["1"] ~= nil) then
+		local temp = cmdClass.data["1"].val.value
+		setVariableIfChanged("urn:upnp-org:serviceId:TemperatureSensor1", "CurrentTemperature", temp or '', lul_device)
+	end
+	if (cmdClass.data["3"] ~= nil) then
+		local lux = cmdClass.data["3"].val.value
+		setVariableIfChanged("urn:micasaverde-com:serviceId:LightSensor1", "CurrentLevel", lux or '', lul_device)
+	end
 	if (cmdClass.data["4"] ~= nil) then
 		local power = cmdClass.data["4"].val.value
-		setVariableIfChanged("urn:micasaverde-com:serviceId:EnergyMetering1", "Watts", power, lul_device)
+		setVariableIfChanged("urn:micasaverde-com:serviceId:EnergyMetering1", "Watts", power or '', lul_device)
+	end
+	if (cmdClass.data["5"] ~= nil) then
+		local hum = cmdClass.data["5"].val.value
+		setVariableIfChanged("urn:micasaverde-com:serviceId:HumiditySensor1", "CurrentLevel", hum or '', lul_device)
+	end
+	if (cmdClass.data["27"] ~= nil) then
+		-- TODO Ultraviolet
+		-- local hum = cmdClass.data["5"].val.value
+		-- setVariableIfChanged("urn:micasaverde-com:serviceId:HumiditySensor1", "CurrentLevel", hum or '', lul_device)
 	end
 end
 
@@ -830,17 +862,51 @@ local function initDeviceInstanceFromZWayData( lul_device, zway_device_id, insta
 end
 
 
+local function zWayToVeraNodeInfo(arr)
+	-- debug(string.format("zWayToVeraNodeInfo(%s)",json.encode(arr)))
+	table.sort(arr)
+	local result = {}
+	for k,v in ipairs(arr) do
+		result [ #result +1 ] = string.format("%x",v)
+	end
+	-- debug(string.format("zWayToVeraNodeInfo result(%s)",json.encode(result)))
+	return table.concat(result,",")
+end
+
+local function zWayToVeraNeighbors(lul_device,arr)
+	local result = {}
+	for k,v in ipairs(arr) do
+		local veraDeviceId = findChild(lul_device, v..".0")
+		result [ #result +1 ] = veraDeviceId 
+	end
+	return table.concat(result,",")
+end
+
 local function initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
 	debug(string.format("initDeviceFromZWayData(%s,%s)",zway_device_id,json.encode(zway_device)))
 	for instance_id,instance in pairs(zway_device.instances) do 
 		initDeviceInstanceFromZWayData( lul_device, zway_device_id, instance_id , zway_device )
 	end
+	local veraDeviceId = findChild(lul_device, zway_device_id..".0")
+	setVariableIfChanged(
+		"urn:micasaverde-com:serviceId:ZWaveDevice1","ManufacturerInfo",
+		string.format("%s,%s,%s",
+			zway_device.data.manufacturerId.value,
+			zway_device.data.manufacturerProductType.value,
+			zway_device.data.manufacturerProductId.value),
+		veraDeviceId)
+	setVariableIfChanged("urn:micasaverde-com:serviceId:ZWaveDevice1","NodeInfo",zWayToVeraNodeInfo(zway_device.data.nodeInfoFrame.value),veraDeviceId)
+	setVariableIfChanged("urn:micasaverde-com:serviceId:ZWaveDevice1","Neighbors",zWayToVeraNeighbors(lul_device,zway_device.data.neighbours.value),veraDeviceId)
+	setVariableIfChanged("urn:micasaverde-com:serviceId:ZWaveDevice1","PollNoReply",0,veraDeviceId)
+	setVariableIfChanged("urn:micasaverde-com:serviceId:ZWaveDevice1","PollOk",0,veraDeviceId)
 end
 
 local function refreshDevices( lul_device, zway_data ) 
 	debug(string.format("refreshDevices(%s,%s)",lul_device,json.encode(zway_data)))
 	for k,v in pairs(zway_data) do
 		local devid,instid,cls,variable = k:match("devices%.(%d+)%.instances%.(%d+).commandClasses.(%d+).data.(.+)")
+		--
+		-- try to decode command classes
 		-- debug( string.format("devid:%s,instid:%s,cls:%s,variable:%s",devid or 'unk',instid or 'unk',cls or 'unk',variable or 'unk') )
 		if (devid ~= nil ) then
 			local vera_id, child_v = findChild( lul_device, devid.."."..instid )
@@ -856,7 +922,17 @@ local function refreshDevices( lul_device, zway_data )
 				debug("Unknown zWay device:"..devid )
 			end
 		else
-				debug("ignoring zway update key:"..k)
+				-- try to decode NIF
+				devid = k:match("devices%.(%d+)%.data%.nodeInfoFrame")
+				if (devid ~= nil ) then
+					local vera_id, child_v = findChild( lul_device, devid..".0" )
+					setVariableIfChanged(
+						"urn:micasaverde-com:serviceId:ZWaveDevice1","NodeInfo",
+						zWayToVeraNodeInfo(v.value),
+						vera_id)					
+				else
+					debug("ignoring zway update key:"..k)
+				end
 		end
 	end
 end
@@ -890,7 +966,9 @@ local function resyncZwayDevices(lul_device)
 	
 	debug(string.format("Updating Vera devices"))
 	for zway_device_id,zway_device in pairs(zway_tree.devices) do
-		initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
+		if (zway_device_id~="1") then
+			initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
+		end
 	end
 	return true -- success if it comes here, otherwise luup will reload
 end
@@ -907,6 +985,9678 @@ function getZWayData(lul_device,forcedtimestamp)
 	local password = getSetVariable(RAZB_SERVICE, "Password", lul_device, "")
 	local result = myHttp(url,"POST","")
 	if (result ~= -1) then
+	
+---------------------------
+-- DEBUG
+---------------------------
+-- result = [[
+-- {
+  -- "controller": {
+    -- "data": {
+    -- "value": null,
+    -- "type": "empty",
+    -- "nodeId": {
+      -- "value": 1,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "homeId": {
+      -- "value": -827855221,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "SUCNodeId": {
+      -- "value": 1,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "isPrimary": {
+      -- "value": true,
+      -- "type": "bool",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100780
+    -- },
+    -- "isInOthersNetwork": {
+      -- "value": false,
+      -- "type": "bool",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100780
+    -- },
+    -- "isRealPrimary": {
+      -- "value": true,
+      -- "type": "bool",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100780
+    -- },
+    -- "isSUC": {
+      -- "value": true,
+      -- "type": "bool",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100780
+    -- },
+    -- "SISPresent": {
+      -- "value": true,
+      -- "type": "bool",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100780
+    -- },
+    -- "libType": {
+      -- "value": "Static Controller",
+      -- "type": "string",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "SDK": {
+      -- "value": "6.51.03",
+      -- "type": "string",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "ZWlibMajor": {
+      -- "value": 3,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "ZWlibMinor": {
+      -- "value": 99,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "ZWLib": {
+      -- "value": 1,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "ZWVersion": {
+      -- "value": 5,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "ZWaveChip": {
+      -- "value": "ZW0500",
+      -- "type": "string",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "APIVersion": {
+      -- "value": "05.00",
+      -- "type": "string",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "manufacturerId": {
+      -- "value": 327,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "vendor": {
+      -- "value": "RaZberry by Z-Wave.Me",
+      -- "type": "string",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "manufacturerProductType": {
+      -- "value": 1024,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "manufacturerProductId": {
+      -- "value": 1,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "capabilities": {
+      -- "value": [ 2, 3, 4, 5, 6, 7, 8, 9, 10, 16, 17, 18, 19, 20, 21, 22, 23, 24, 28, 32, 33, 34, 35, 36, 39, 40, 41, 42, 43, 44, 45, 65, 66, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 80, 81, 83, 84, 85, 86, 87, 94, 96, 97, 98, 99, 102, 103, 120, 128, 144, 146, 147, 152, 180, 182, 183, 184, 185, 186, 189, 190, 191, 210, 211, 212, 239, 242, 244 ],
+      -- "type": "int[]",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "controllerState": {
+      -- "value": 0,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "nonManagmentJobs": {
+      -- "value": 0,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "lastIncludedDevice": {
+      -- "value": null,
+      -- "type": "empty",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "lastExcludedDevice": {
+      -- "value": null,
+      -- "type": "empty",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "secureInclusion": {
+      -- "value": true,
+      -- "type": "bool",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "oldSerialAPIAckTimeout10ms": {
+      -- "value": 10,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "oldSerialAPIByteTimeout10ms": {
+      -- "value": 10,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "curSerialAPIAckTimeout10ms": {
+      -- "value": 10,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "curSerialAPIByteTimeout10ms": {
+      -- "value": 10,
+      -- "type": "int",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "countJobs": {
+      -- "value": false,
+      -- "type": "bool",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "memoryGetAddress": {
+      -- "value": null,
+      -- "type": "empty",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "memoryGetData": {
+      -- "value": null,
+      -- "type": "empty",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "functionClasses": {
+      -- "value": [ 2, 3, 4, 5, 6, 7, 8, 18, 19, 21, 22, 23, 32, 33, 34, 35, 36, 39, 41, 42, 43, 44, 45, 65, 66, 68, 70, 71, 72, 73, 74, 75, 76, 77, 80, 81, 82, 83, 84, 85, 86, 87, 94, 96, 97, 98, 99, 128, 186, 190, 210, 211, 242, 243, 244, 245 ],
+      -- "type": "int[]",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "functionClassesNames": {
+      -- "value": [ "SerialAPIGetInitData", "SerialAPIApplicationNodeInformation", "ApplicationCommandHandler", "GetControllerCapabilities", "SerialAPISetTimeouts", "GetSerialAPICapabilities", "SerialAPISoftReset", "SendNodeInformation", "SendData", "GetVersion", "SendDataAbort", "RFPowerLevelSet", "GetHomeId", "MemoryGetByte", "MemoryPutByte", "MemoryGetBuffer", "MemoryPutBuffer", "FlashAutoProgSet", "NVMGetId", "NVMExtReadLongBuffer", "NVMExtWriteLongBuffer", "NVMExtReadLongByte", "NVMExtWriteLongByte", "GetNodeProtocolInformation", "SetDefault", "ReplicationReceiveComplete", "AssignReturnRoute", "DeleteReturnRoute", "RequestNodeNeighbourUpdate", "ApplicationNodeUpdate", "AddNodeToNetwork", "RemoveNodeFromNetwork", "CreateNewPrimary", "ControllerChange", "SetLearnMode", "AssignSUCReturnRoute", "EnableSUC", "RequestNetworkUpdate", "SetSUCNodeId", "DeleteSUCReturnRoute", "GetSUCNodeId", "SendSUCNodeId", "ExploreRequestInclusion", "RequestNodeInformation", "RemoveFailedNode", "IsFailedNode", "ReplaceFailedNode", "GetRoutingTableLine", "RFPowerLevelGet", "SendTestFrame", "WatchDogStart", "WatchDogStop", "ZMEFreqChange", "ZMERestore", "ZMEBootloaderFlash", "ZMECapabilities" ],
+      -- "type": "string[]",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "softwareRevisionVersion": {
+      -- "value": "v2.2.2",
+      -- "type": "string",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "softwareRevisionId": {
+      -- "value": "d2212e41b6487bf6efe6df730db05571edc64915",
+      -- "type": "string",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "softwareRevisionDate": {
+      -- "value": "2016-04-11 11:00:34 +0300",
+      -- "type": "string",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "uuid": {
+      -- "value": null,
+      -- "type": "empty",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "caps": {
+      -- "value": null,
+      -- "type": "empty",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "frequency": {
+      -- "value": "unknown",
+      -- "type": "string",
+      -- "invalidateTime": 1468100778,
+      -- "updateTime": 1468100779
+    -- },
+    -- "invalidateTime": 1468100778,
+    -- "updateTime": 1468100779
+    -- }
+  -- },
+  -- "devices": {
+    -- "1": {
+      -- "data": {
+      -- "value": null,
+      -- "type": "empty",
+      -- "basicType": {
+        -- "value": 2,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468100780
+      -- },
+      -- "genericType": {
+        -- "value": 2,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468100780
+      -- },
+      -- "specificType": {
+        -- "value": 1,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468100780
+      -- },
+      -- "infoProtocolSpecific": {
+        -- "value": 9639425,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468100780
+      -- },
+      -- "deviceTypeString": {
+        -- "value": "Static PC Controller",
+        -- "type": "string",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468100780
+      -- },
+      -- "isVirtual": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "isListening": {
+        -- "value": true,
+        -- "type": "bool",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468100780
+      -- },
+      -- "isRouting": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468100780
+      -- },
+      -- "isAwake": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "optional": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468100780
+      -- },
+      -- "isFailed": {
+        -- "value": true,
+        -- "type": "bool",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468094777
+      -- },
+      -- "beam": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "sensor250": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468100780
+      -- },
+      -- "sensor1000": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468100780
+      -- },
+      -- "neighbours": {
+        -- "value": [ 2 ],
+        -- "type": "binary",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468100780
+      -- },
+      -- "manufacturerId": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "vendorString": {
+        -- "value": "",
+        -- "type": "string",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "manufacturerProductType": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "manufacturerProductId": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "ZWLib": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "ZWProtocolMajor": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "ZWProtocolMinor": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "SDK": {
+        -- "value": "",
+        -- "type": "string",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "applicationMajor": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "applicationMinor": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "nodeInfoFrame": {
+        -- "value": [ 94, 134, 96, 143, 129, 70, 152, 38, 37, 114, 138, 43, 119, 34, 91, 86, 115, 133, 89, 142, 90 ],
+        -- "type": "binary",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468100780
+      -- },
+      -- "ZDDXMLFile": {
+        -- "value": "",
+        -- "type": "string",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "lastSend": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468100778,
+        -- "updateTime": 1468100779
+      -- },
+      -- "lastNonceGet": {
+        -- "value": null,
+        -- "type": "empty",
+        -- "invalidateTime": 1468100778,
+        -- "updateTime": 1468100779
+      -- },
+      -- "lastReceived": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "failureCount": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468100778,
+        -- "updateTime": 1468100779
+      -- },
+      -- "keepAwake": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "countSuccess": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "countFailed": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "queueLength": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "givenName": {
+        -- "value": "",
+        -- "type": "string",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "secureChannelEstablished": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "secureControllerId": {
+        -- "value": 1,
+        -- "type": "int",
+        -- "invalidateTime": 1468080350,
+        -- "updateTime": 1468080351
+      -- },
+      -- "invalidateTime": 1468080350,
+      -- "updateTime": 1468080351
+      -- },
+      -- "instances": {
+        -- "0": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468080351
+          -- },
+          -- "genericType": {
+            -- "value": 2,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468080351
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468080351
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": null,
+            -- "type": "empty",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468080351
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "34": {
+              -- "name": "ApplicationStatus",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "70": {
+              -- "name": "ClimateControlSchedule",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "overrideType": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "overrideState": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "86": {
+              -- "name": "CRC16",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "89": {
+              -- "name": "AssociationGroupInformation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dynamic": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "1": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "groupName": {
+                  -- "value": "Lifeline",
+                  -- "type": "string",
+                  -- "invalidateTime": 1468100779,
+                  -- "updateTime": 1468100780
+                -- },
+                -- "mode": {
+                  -- "value": 0,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468100779,
+                  -- "updateTime": 1468100780
+                -- },
+                -- "profile": {
+                  -- "value": 1,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468100779,
+                  -- "updateTime": 1468100780
+                -- },
+                -- "eventCode": {
+                  -- "value": 0,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468100779,
+                  -- "updateTime": 1468100780
+                -- },
+                -- "commands": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "90": {
+                    -- "value": [ 1 ],
+                    -- "type": "binary",
+                    -- "invalidateTime": 1468100779,
+                    -- "updateTime": 1468100780
+                  -- },
+                  -- "invalidateTime": 1468100779,
+                  -- "updateTime": 1468100780
+                -- },
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "90": {
+              -- "name": "DeviceResetLocally",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "reset": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "94": {
+              -- "name": "ZWavePlusInfo",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 2,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "plusVersion": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "roleType": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "nodeType": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "installerIcon": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "userIcon": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "roleTypeString": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "96": {
+              -- "name": "MultiChannel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 4,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "endPoints": {
+                -- "value": 0,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "aggregated": {
+                -- "value": 0,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dynamic": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "identical": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "114": {
+              -- "name": "ManufacturerSpecific",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "vendorId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "vendor": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "productId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "productType": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "serialNumber": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "115": {
+              -- "name": "PowerLevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "timeout": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "119": {
+              -- "name": "NodeNaming",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "nodename": {
+                -- "value": "Gateway",
+                -- "type": "string",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "location": {
+                -- "value": "Main Room",
+                -- "type": "string",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "nameEncoding": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "locationEncoding": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "129": {
+              -- "name": "Clock",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "133": {
+              -- "name": "Association",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 2,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "groups": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "specificGroup": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "1": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "max": {
+                  -- "value": 3,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468100779,
+                  -- "updateTime": 1468100780
+                -- },
+                -- "nodes": {
+                  -- "value": [ ],
+                  -- "type": "binary",
+                  -- "invalidateTime": 1468100780,
+                  -- "updateTime": 1468100779
+                -- },
+                -- "invalidateTime": 1468100780,
+                -- "updateTime": 1468100779
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "134": {
+              -- "name": "Version",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 2,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "ZWLib": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "ZWProtocolMajor": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "ZWProtocolMinor": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "SDK": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "applicationMajor": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "applicationMinor": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "hardwareVersion": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "firmwareCount": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "138": {
+              -- "name": "Time",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 2,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "142": {
+              -- "name": "MultiChannelAssociation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 3,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "groups": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "1": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "max": {
+                  -- "value": 3,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468100779,
+                  -- "updateTime": 1468100780
+                -- },
+                -- "nodesInstances": {
+                  -- "value": [ ],
+                  -- "type": "binary",
+                  -- "invalidateTime": 1468100780,
+                  -- "updateTime": 1468100779
+                -- },
+                -- "invalidateTime": 1468100780,
+                -- "updateTime": 1468100779
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "143": {
+              -- "name": "MultiCmd",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxNum": {
+                -- "value": 3,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "152": {
+              -- "name": "Security",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "scheme": {
+                -- "value": 0,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "secureNodeInfoFrame": {
+                -- "value": [ ],
+                -- "type": "binary",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "securityAbandoned": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "canStream": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "toFollow": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "1": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "2": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "3": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "4": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "5": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "6": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "7": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "8": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "9": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "10": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "11": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "12": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "13": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "14": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "15": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- },
+        -- "16": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "genericType": {
+            -- "value": 17,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": [ 37, 38, 43, 91 ],
+            -- "type": "binary",
+            -- "invalidateTime": 1468080350,
+            -- "updateTime": 1468100780
+          -- },
+          -- "invalidateTime": 1468080350,
+          -- "updateTime": 1468080351
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "37": {
+              -- "name": "SwitchBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "38": {
+              -- "name": "SwitchMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "level": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "startChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "stopChange": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "prevLevel": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "43": {
+              -- "name": "SceneActivation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "dimmingDuration": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- },
+            -- "91": {
+              -- "name": "CentralScene",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "security": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "maxScenes": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "currentScene": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "keyAttribute": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcNodeId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "srcInstanceId": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468100779,
+                -- "updateTime": 1468100780
+              -- },
+              -- "invalidateTime": 1468100779,
+              -- "updateTime": 1468100780
+              -- }
+            -- }
+          -- }
+        -- }
+      -- }
+    -- },
+    -- "2": {
+      -- "data": {
+      -- "value": null,
+      -- "type": "empty",
+      -- "basicType": {
+        -- "value": 4,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101479
+      -- },
+      -- "genericType": {
+        -- "value": 33,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101479
+      -- },
+      -- "specificType": {
+        -- "value": 1,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101479
+      -- },
+      -- "infoProtocolSpecific": {
+        -- "value": 5479425,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468100780
+      -- },
+      -- "deviceTypeString": {
+        -- "value": "Routing Multilevel Sensor",
+        -- "type": "string",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101479
+      -- },
+      -- "isVirtual": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468095426
+      -- },
+      -- "isListening": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468100780
+      -- },
+      -- "isRouting": {
+        -- "value": true,
+        -- "type": "bool",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468100780
+      -- },
+      -- "isAwake": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101510
+      -- },
+      -- "optional": {
+        -- "value": true,
+        -- "type": "bool",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468100780
+      -- },
+      -- "isFailed": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101014
+      -- },
+      -- "beam": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468095426
+      -- },
+      -- "sensor250": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468100780
+      -- },
+      -- "sensor1000": {
+        -- "value": false,
+        -- "type": "bool",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468100780
+      -- },
+      -- "neighbours": {
+        -- "value": [ 1 ],
+        -- "type": "binary",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468100780
+      -- },
+      -- "manufacturerId": {
+        -- "value": 134,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101020
+      -- },
+      -- "vendorString": {
+        -- "value": "Aeon Labs",
+        -- "type": "string",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101020
+      -- },
+      -- "manufacturerProductType": {
+        -- "value": 258,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101020
+      -- },
+      -- "manufacturerProductId": {
+        -- "value": 100,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101020
+      -- },
+      -- "ZWLib": {
+        -- "value": 3,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101020
+      -- },
+      -- "ZWProtocolMajor": {
+        -- "value": 4,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101020
+      -- },
+      -- "ZWProtocolMinor": {
+        -- "value": 5,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101020
+      -- },
+      -- "SDK": {
+        -- "value": "6.51.06",
+        -- "type": "string",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101020
+      -- },
+      -- "applicationMajor": {
+        -- "value": 1,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101020
+      -- },
+      -- "applicationMinor": {
+        -- "value": 6,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101020
+      -- },
+      -- "nodeInfoFrame": {
+        -- "value": [ 94, 134, 114, 152, 132, 239, 90 ],
+        -- "type": "binary",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101479
+      -- },
+      -- "ZDDXMLFile": {
+        -- "value": "825-0086-0102-0064-03-04-05-01-00.xml",
+        -- "type": "string",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101523
+      -- },
+      -- "lastSend": {
+        -- "value": 68572,
+        -- "type": "int",
+        -- "invalidateTime": 1468100778,
+        -- "updateTime": 1468101487
+      -- },
+      -- "lastNonceGet": {
+        -- "value": 70723,
+        -- "type": "int",
+        -- "invalidateTime": 1468100778,
+        -- "updateTime": 1468101509
+      -- },
+      -- "lastReceived": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101487
+      -- },
+      -- "failureCount": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468100778,
+        -- "updateTime": 1468101014
+      -- },
+      -- "keepAwake": {
+        -- "value": true,
+        -- "type": "bool",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468101011
+      -- },
+      -- "countSuccess": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468095426
+      -- },
+      -- "countFailed": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468095426
+      -- },
+      -- "queueLength": {
+        -- "value": 0,
+        -- "type": "int",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468095426
+      -- },
+      -- "givenName": {
+        -- "value": "Routing Multilevel Sensor_2",
+        -- "type": "string",
+        -- "invalidateTime": 1468095425,
+        -- "updateTime": 1468095429
+      -- },
+      -- "secureChannelEstablished": {
+        -- "value": true,
+        -- "type": "bool",
+        -- "invalidateTime": 1468095426,
+        -- "updateTime": 1468095427
+      -- },
+      -- "invalidateTime": 1468095425,
+      -- "updateTime": 1468095426
+      -- },
+      -- "instances": {
+        -- "0": {
+          -- "data": {
+          -- "value": null,
+          -- "type": "empty",
+          -- "dynamic": {
+            -- "value": false,
+            -- "type": "bool",
+            -- "invalidateTime": 1468095425,
+            -- "updateTime": 1468095426
+          -- },
+          -- "genericType": {
+            -- "value": 33,
+            -- "type": "int",
+            -- "invalidateTime": 1468095425,
+            -- "updateTime": 1468095426
+          -- },
+          -- "specificType": {
+            -- "value": 1,
+            -- "type": "int",
+            -- "invalidateTime": 1468095425,
+            -- "updateTime": 1468095426
+          -- },
+          -- "nodeInfoFrame": {
+            -- "value": null,
+            -- "type": "empty",
+            -- "invalidateTime": 1468095425,
+            -- "updateTime": 1468095426
+          -- },
+          -- "invalidateTime": 1468095425,
+          -- "updateTime": 1468095426
+          -- },
+          -- "commandClasses": {
+            -- "32": {
+              -- "name": "Basic",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101011
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101016
+              -- },
+              -- "security": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewDone": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101021
+              -- },
+              -- "interviewCounter": {
+                -- "value": 9,
+                -- "type": "int",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101021
+              -- },
+              -- "level": {
+                -- "value": 255,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101022
+              -- },
+              -- "invalidateTime": 1468101021,
+              -- "updateTime": 1468101011
+              -- }
+            -- },
+            -- "94": {
+              -- "name": "ZWavePlusInfo",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101011
+              -- },
+              -- "version": {
+                -- "value": 2,
+                -- "type": "int",
+                -- "invalidateTime": 1468101015,
+                -- "updateTime": 1468101016
+              -- },
+              -- "security": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewDone": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101022
+              -- },
+              -- "interviewCounter": {
+                -- "value": 9,
+                -- "type": "int",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101021
+              -- },
+              -- "plusVersion": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101022
+              -- },
+              -- "roleType": {
+                -- "value": 6,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101022
+              -- },
+              -- "nodeType": {
+                -- "value": 0,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101022
+              -- },
+              -- "installerIcon": {
+                -- "value": 3079,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101022
+              -- },
+              -- "userIcon": {
+                -- "value": 3079,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101022
+              -- },
+              -- "roleTypeString": {
+                -- "value": "Reporting Sleeping Slave",
+                -- "type": "string",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101022
+              -- },
+              -- "invalidateTime": 1468101010,
+              -- "updateTime": 1468101011
+              -- }
+            -- },
+            -- "114": {
+              -- "name": "ManufacturerSpecific",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101020,
+                -- "updateTime": 1468101011
+              -- },
+              -- "version": {
+                -- "value": 2,
+                -- "type": "int",
+                -- "invalidateTime": 1468101020,
+                -- "updateTime": 1468101016
+              -- },
+              -- "security": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewDone": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101020
+              -- },
+              -- "interviewCounter": {
+                -- "value": 9,
+                -- "type": "int",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101020
+              -- },
+              -- "vendorId": {
+                -- "value": 134,
+                -- "type": "int",
+                -- "invalidateTime": 1468101019,
+                -- "updateTime": 1468101020
+              -- },
+              -- "vendor": {
+                -- "value": "Aeon Labs",
+                -- "type": "string",
+                -- "invalidateTime": 1468101019,
+                -- "updateTime": 1468101020
+              -- },
+              -- "productId": {
+                -- "value": 100,
+                -- "type": "int",
+                -- "invalidateTime": 1468101019,
+                -- "updateTime": 1468101020
+              -- },
+              -- "productType": {
+                -- "value": 258,
+                -- "type": "int",
+                -- "invalidateTime": 1468101019,
+                -- "updateTime": 1468101020
+              -- },
+              -- "serialNumber": {
+                -- "value": [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ],
+                -- "type": "binary",
+                -- "invalidateTime": 1468101020,
+                -- "updateTime": 1468101021
+              -- },
+              -- "invalidateTime": 1468101020,
+              -- "updateTime": 1468101011
+              -- }
+            -- },
+            -- "132": {
+              -- "name": "Wakeup",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101024,
+                -- "updateTime": 1468101011
+              -- },
+              -- "version": {
+                -- "value": 2,
+                -- "type": "int",
+                -- "invalidateTime": 1468101024,
+                -- "updateTime": 1468101016
+              -- },
+              -- "security": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewDone": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101024
+              -- },
+              -- "interviewCounter": {
+                -- "value": 9,
+                -- "type": "int",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101021
+              -- },
+              -- "interval": {
+                -- "value": 3600,
+                -- "type": "int",
+                -- "invalidateTime": 1468101024,
+                -- "updateTime": 1468101028
+              -- },
+              -- "nodeId": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468101024,
+                -- "updateTime": 1468101028
+              -- },
+              -- "min": {
+                -- "value": 240,
+                -- "type": "int",
+                -- "invalidateTime": 1468101024,
+                -- "updateTime": 1468101021
+              -- },
+              -- "max": {
+                -- "value": 3600,
+                -- "type": "int",
+                -- "invalidateTime": 1468101024,
+                -- "updateTime": 1468101021
+              -- },
+              -- "default": {
+                -- "value": 3600,
+                -- "type": "int",
+                -- "invalidateTime": 1468101024,
+                -- "updateTime": 1468101021
+              -- },
+              -- "step": {
+                -- "value": 60,
+                -- "type": "int",
+                -- "invalidateTime": 1468101024,
+                -- "updateTime": 1468101021
+              -- },
+              -- "lastWakeup": {
+                -- "value": 1468101486,
+                -- "type": "int",
+                -- "invalidateTime": 1468101024,
+                -- "updateTime": 1468101486
+              -- },
+              -- "lastSleep": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468101024,
+                -- "updateTime": 1468101011
+              -- },
+              -- "invalidateTime": 1468101024,
+              -- "updateTime": 1468101028
+              -- }
+            -- },
+            -- "134": {
+              -- "name": "Version",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101011
+              -- },
+              -- "version": {
+                -- "value": 2,
+                -- "type": "int",
+                -- "invalidateTime": 1468101015,
+                -- "updateTime": 1468101017
+              -- },
+              -- "security": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewDone": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101020
+              -- },
+              -- "interviewCounter": {
+                -- "value": 9,
+                -- "type": "int",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101015
+              -- },
+              -- "ZWLib": {
+                -- "value": 3,
+                -- "type": "int",
+                -- "invalidateTime": 1468101017,
+                -- "updateTime": 1468101020
+              -- },
+              -- "ZWProtocolMajor": {
+                -- "value": 4,
+                -- "type": "int",
+                -- "invalidateTime": 1468101017,
+                -- "updateTime": 1468101020
+              -- },
+              -- "ZWProtocolMinor": {
+                -- "value": 5,
+                -- "type": "int",
+                -- "invalidateTime": 1468101017,
+                -- "updateTime": 1468101020
+              -- },
+              -- "SDK": {
+                -- "value": "6.51.06",
+                -- "type": "string",
+                -- "invalidateTime": 1468101017,
+                -- "updateTime": 1468101020
+              -- },
+              -- "applicationMajor": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468101017,
+                -- "updateTime": 1468101020
+              -- },
+              -- "applicationMinor": {
+                -- "value": 6,
+                -- "type": "int",
+                -- "invalidateTime": 1468101017,
+                -- "updateTime": 1468101020
+              -- },
+              -- "hardwareVersion": {
+                -- "value": 100,
+                -- "type": "int",
+                -- "invalidateTime": 1468101017,
+                -- "updateTime": 1468101020
+              -- },
+              -- "firmwareCount": {
+                -- "value": 0,
+                -- "type": "int",
+                -- "invalidateTime": 1468101017,
+                -- "updateTime": 1468101020
+              -- },
+              -- "invalidateTime": 1468101017,
+              -- "updateTime": 1468101020
+              -- }
+            -- },
+            -- "152": {
+              -- "name": "Security",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101011
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468101015,
+                -- "updateTime": 1468101017
+              -- },
+              -- "security": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewDone": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewCounter": {
+                -- "value": 10,
+                -- "type": "int",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101014
+              -- },
+              -- "scheme": {
+                -- "value": 0,
+                -- "type": "int",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101011
+              -- },
+              -- "secureNodeInfoFrame": {
+                -- "value": [ 94, 134, 114, 132, 89, 133, 115, 113, 128, 48, 49, 112, 152, 122, 239 ],
+                -- "type": "binary",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "securityAbandoned": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101011
+              -- },
+              -- "canStream": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101011
+              -- },
+              -- "toFollow": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101010,
+                -- "updateTime": 1468101487
+              -- },
+              -- "invalidateTime": 1468101010,
+              -- "updateTime": 1468101011
+              -- }
+            -- },
+            -- "48": {
+              -- "name": "SensorBinary",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468101015,
+                -- "updateTime": 1468101017
+              -- },
+              -- "security": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewDone": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101022
+              -- },
+              -- "interviewCounter": {
+                -- "value": 9,
+                -- "type": "int",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101021
+              -- },
+              -- "typemask": {
+                -- "value": 2,
+                -- "type": "int",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101021
+              -- },
+              -- "1": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "sensorTypeString": {
+                  -- "value": "General purpose",
+                  -- "type": "string",
+                  -- "invalidateTime": 1468101021,
+                  -- "updateTime": 1468101022
+                -- },
+                -- "level": {
+                  -- "value": true,
+                  -- "type": "bool",
+                  -- "invalidateTime": 1468101021,
+                  -- "updateTime": 1468101022
+                -- },
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101022
+              -- },
+              -- "invalidateTime": 1468101013,
+              -- "updateTime": 1468101014
+              -- }
+            -- },
+            -- "49": {
+              -- "name": "SensorMultilevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "version": {
+                -- "value": 5,
+                -- "type": "int",
+                -- "invalidateTime": 1468101015,
+                -- "updateTime": 1468101018
+              -- },
+              -- "security": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewDone": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101021
+              -- },
+              -- "interviewCounter": {
+                -- "value": 9,
+                -- "type": "int",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101021
+              -- },
+              -- "typemask": {
+                -- "value": [ 21, 0, 0, 4 ],
+                -- "type": "binary",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101023
+              -- },
+              -- "1": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "sensorTypeString": {
+                  -- "value": "Temperature",
+                  -- "type": "string",
+                  -- "invalidateTime": 1468101024,
+                  -- "updateTime": 1468101025
+                -- },
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101024,
+                  -- "updateTime": 1468101025
+                -- },
+                -- "deviceScale": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101024,
+                  -- "updateTime": 1468101025
+                -- },
+                -- "scale": {
+                  -- "value": 0,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468101024,
+                  -- "updateTime": 1468101025
+                -- },
+                -- "scaleString": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101024,
+                  -- "updateTime": 1468101025
+                -- },
+                -- "invalidateTime": 1468101025,
+                -- "updateTime": 1468101024
+              -- },
+              -- "3": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "sensorTypeString": {
+                  -- "value": "Luminiscence",
+                  -- "type": "string",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101026
+                -- },
+                -- "val": {
+                  -- "value": 0,
+                  -- "type": "float",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101038
+                -- },
+                -- "deviceScale": {
+                  -- "value": 1,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101038
+                -- },
+                -- "scale": {
+                  -- "value": 1,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101038
+                -- },
+                -- "scaleString": {
+                  -- "value": "Lux",
+                  -- "type": "string",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101038
+                -- },
+                -- "invalidateTime": 1468101026,
+                -- "updateTime": 1468101038
+              -- },
+              -- "5": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "sensorTypeString": {
+                  -- "value": "Humidity",
+                  -- "type": "string",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101026
+                -- },
+                -- "val": {
+                  -- "value": 41,
+                  -- "type": "float",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101485
+                -- },
+                -- "deviceScale": {
+                  -- "value": 0,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101485
+                -- },
+                -- "scale": {
+                  -- "value": 0,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101485
+                -- },
+                -- "scaleString": {
+                  -- "value": "%",
+                  -- "type": "string",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101485
+                -- },
+                -- "invalidateTime": 1468101026,
+                -- "updateTime": 1468101485
+              -- },
+              -- "27": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "sensorTypeString": {
+                  -- "value": "Ultraviolet",
+                  -- "type": "string",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101026
+                -- },
+                -- "val": {
+                  -- "value": 0,
+                  -- "type": "float",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101486
+                -- },
+                -- "deviceScale": {
+                  -- "value": 0,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101486
+                -- },
+                -- "scale": {
+                  -- "value": 0,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101486
+                -- },
+                -- "scaleString": {
+                  -- "value": "UV index",
+                  -- "type": "string",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101486
+                -- },
+                -- "invalidateTime": 1468101026,
+                -- "updateTime": 1468101486
+              -- },
+              -- "invalidateTime": 1468101013,
+              -- "updateTime": 1468101014
+              -- }
+            -- },
+            -- "89": {
+              -- "name": "AssociationGroupInformation",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468101015,
+                -- "updateTime": 1468101018
+              -- },
+              -- "security": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewDone": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101486
+              -- },
+              -- "interviewCounter": {
+                -- "value": 8,
+                -- "type": "int",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101027
+              -- },
+              -- "dynamic": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101486
+              -- },
+              -- "1": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "groupName": {
+                  -- "value": "Lifeline",
+                  -- "type": "string",
+                  -- "invalidateTime": 1468101485,
+                  -- "updateTime": 1468101487
+                -- },
+                -- "mode": {
+                  -- "value": 0,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468101485,
+                  -- "updateTime": 1468101486
+                -- },
+                -- "profile": {
+                  -- "value": 0,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468101485,
+                  -- "updateTime": 1468101486
+                -- },
+                -- "eventCode": {
+                  -- "value": 0,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468101485,
+                  -- "updateTime": 1468101486
+                -- },
+                -- "commands": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "32": {
+                    -- "value": [ 1 ],
+                    -- "type": "binary",
+                    -- "invalidateTime": 1468101486,
+                    -- "updateTime": 1468101487
+                  -- },
+                  -- "48": {
+                    -- "value": [ 3 ],
+                    -- "type": "binary",
+                    -- "invalidateTime": 1468101486,
+                    -- "updateTime": 1468101487
+                  -- },
+                  -- "128": {
+                    -- "value": [ 3 ],
+                    -- "type": "binary",
+                    -- "invalidateTime": 1468101486,
+                    -- "updateTime": 1468101487
+                  -- },
+                  -- "49": {
+                    -- "value": [ 5 ],
+                    -- "type": "binary",
+                    -- "invalidateTime": 1468101486,
+                    -- "updateTime": 1468101487
+                  -- },
+                  -- "113": {
+                    -- "value": [ 5 ],
+                    -- "type": "binary",
+                    -- "invalidateTime": 1468101486,
+                    -- "updateTime": 1468101487
+                  -- },
+                  -- "132": {
+                    -- "value": [ 7 ],
+                    -- "type": "binary",
+                    -- "invalidateTime": 1468101486,
+                    -- "updateTime": 1468101487
+                  -- },
+                  -- "invalidateTime": 1468101485,
+                  -- "updateTime": 1468101487
+                -- },
+                -- "invalidateTime": 1468101485,
+                -- "updateTime": 1468101486
+              -- },
+              -- "invalidateTime": 1468101013,
+              -- "updateTime": 1468101014
+              -- }
+            -- },
+            -- "112": {
+              -- "name": "Configuration",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468101015,
+                -- "updateTime": 1468101018
+              -- },
+              -- "security": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewDone": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101021
+              -- },
+              -- "interviewCounter": {
+                -- "value": 9,
+                -- "type": "int",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101021
+              -- },
+              -- "2": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "3": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "4": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "5": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "39": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "40": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "41": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "42": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "43": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "44": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "45": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "46": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "101": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "102": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "103": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "111": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "112": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "113": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "201": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "202": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "203": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "204": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "252": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "255": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "val": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "size": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101523,
+                  -- "updateTime": 1468101508
+                -- },
+                -- "invalidateTime": 1468101523,
+                -- "updateTime": 1468101508
+              -- },
+              -- "invalidateTime": 1468101013,
+              -- "updateTime": 1468101014
+              -- }
+            -- },
+            -- "113": {
+              -- "name": "Alarm",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "version": {
+                -- "value": 3,
+                -- "type": "int",
+                -- "invalidateTime": 1468101015,
+                -- "updateTime": 1468101019
+              -- },
+              -- "security": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewDone": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101027
+              -- },
+              -- "interviewCounter": {
+                -- "value": 9,
+                -- "type": "int",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101021
+              -- },
+              -- "V1supported": {
+                -- "value": false,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101023
+              -- },
+              -- "typeMask": {
+                -- "value": 128,
+                -- "type": "int",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101023
+              -- },
+              -- "V1event": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "alarmType": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101013,
+                  -- "updateTime": 1468101014
+                -- },
+                -- "level": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101013,
+                  -- "updateTime": 1468101014
+                -- },
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "7": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "typeString": {
+                  -- "value": "Burglar",
+                  -- "type": "string",
+                  -- "invalidateTime": 1468101026,
+                  -- "updateTime": 1468101027
+                -- },
+                -- "status": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101026,
+                  -- "updateTime": 1468101027
+                -- },
+                -- "eventMask": {
+                  -- "value": 264,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468101026,
+                  -- "updateTime": 1468101027
+                -- },
+                -- "event": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101026,
+                  -- "updateTime": 1468101027
+                -- },
+                -- "eventString": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101026,
+                  -- "updateTime": 1468101027
+                -- },
+                -- "eventParameters": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101026,
+                  -- "updateTime": 1468101027
+                -- },
+                -- "eventSequence": {
+                  -- "value": null,
+                  -- "type": "empty",
+                  -- "invalidateTime": 1468101026,
+                  -- "updateTime": 1468101027
+                -- },
+                -- "invalidateTime": 1468101026,
+                -- "updateTime": 1468101027
+              -- },
+              -- "invalidateTime": 1468101013,
+              -- "updateTime": 1468101014
+              -- }
+            -- },
+            -- "115": {
+              -- "name": "PowerLevel",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468101015,
+                -- "updateTime": 1468101019
+              -- },
+              -- "security": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewDone": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101023
+              -- },
+              -- "interviewCounter": {
+                -- "value": 9,
+                -- "type": "int",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101021
+              -- },
+              -- "level": {
+                -- "value": 0,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101023
+              -- },
+              -- "timeout": {
+                -- "value": 0,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101023
+              -- },
+              -- "invalidateTime": 1468101013,
+              -- "updateTime": 1468101014
+              -- }
+            -- },
+            -- "122": {
+              -- "name": "FirmwareUpdate",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "version": {
+                -- "value": 2,
+                -- "type": "int",
+                -- "invalidateTime": 1468101015,
+                -- "updateTime": 1468101019
+              -- },
+              -- "security": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewDone": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101024
+              -- },
+              -- "interviewCounter": {
+                -- "value": 9,
+                -- "type": "int",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101021
+              -- },
+              -- "manufacturerId": {
+                -- "value": 134,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101024
+              -- },
+              -- "firmwareId": {
+                -- "value": 0,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101024
+              -- },
+              -- "checksum": {
+                -- "value": 35235,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101024
+              -- },
+              -- "upgradeable": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101024
+              -- },
+              -- "fragmentSize": {
+                -- "value": 32,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101024
+              -- },
+              -- "firmwareCount": {
+                -- "value": 0,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101024
+              -- },
+              -- "fragmentTransmitted": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "fragmentCount": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "updateStatus": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "waitTime": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "invalidateTime": 1468101013,
+              -- "updateTime": 1468101014
+              -- }
+            -- },
+            -- "128": {
+              -- "name": "Battery",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101014
+              -- },
+              -- "version": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101019
+              -- },
+              -- "security": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewDone": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101026
+              -- },
+              -- "interviewCounter": {
+                -- "value": 9,
+                -- "type": "int",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101021
+              -- },
+              -- "lastChange": {
+                -- "value": 1468101026,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101026
+              -- },
+              -- "history": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "41": {
+                  -- "value": 1468101026,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468101025,
+                  -- "updateTime": 1468101026
+                -- },
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101026
+              -- },
+              -- "last": {
+                -- "value": 41,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101026
+              -- },
+              -- "invalidateTime": 1468101021,
+              -- "updateTime": 1468101014
+              -- }
+            -- },
+            -- "133": {
+              -- "name": "Association",
+              -- "data": {
+              -- "value": null,
+              -- "type": "empty",
+              -- "supported": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "version": {
+                -- "value": 2,
+                -- "type": "int",
+                -- "invalidateTime": 1468101015,
+                -- "updateTime": 1468101020
+              -- },
+              -- "security": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "interviewDone": {
+                -- "value": true,
+                -- "type": "bool",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101027
+              -- },
+              -- "interviewCounter": {
+                -- "value": 9,
+                -- "type": "int",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101021
+              -- },
+              -- "groups": {
+                -- "value": 1,
+                -- "type": "int",
+                -- "invalidateTime": 1468101021,
+                -- "updateTime": 1468101024
+              -- },
+              -- "specificGroup": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "invalidateTime": 1468101013,
+                -- "updateTime": 1468101014
+              -- },
+              -- "1": {
+                -- "value": null,
+                -- "type": "empty",
+                -- "max": {
+                  -- "value": 5,
+                  -- "type": "int",
+                  -- "invalidateTime": 1468101027,
+                  -- "updateTime": 1468101486
+                -- },
+                -- "nodes": {
+                  -- "value": [ 1 ],
+                  -- "type": "binary",
+                  -- "invalidateTime": 1468101027,
+                  -- "updateTime": 1468101486
+                -- },
+                -- "invalidateTime": 1468101027,
+                -- "updateTime": 1468101486
+              -- },
+              -- "invalidateTime": 1468101013,
+              -- "updateTime": 1468101014
+              -- }
+            -- }
+          -- }
+        -- }
+      -- }
+    -- }
+  -- },
+  -- "updateTime": 1468102344
+-- }
+-- ]]
 		local obj = json.decode(result)
 		if (timestamp==0) then
 			-- very first update
