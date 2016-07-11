@@ -937,38 +937,52 @@ local function refreshDevices( lul_device, zway_data )
 	end
 end
 
+-- create correct parent/child relationship between instances
 local function resyncZwayDevices(lul_device)
+  local no_reload = true
 	lul_device = tonumber(lul_device)
 	debug(string.format("resyncZwayDevices(%s)",lul_device))
-	local handle = luup.chdev.start(lul_device);
+	
+  -- for all top-level ["0"] instances
+  local parent = {}
+  local handle = luup.chdev.start(lul_device);
 	for device_id,zway_device in pairs(zway_tree.devices) do
-		-- for all instances
 		if (device_id~="1") then
-			for instance_id,instance in pairs(zway_device.instances) do 
+			for instance_id,instance in pairs({["0"] = zway_device.instances["0"]}) do 
 				local descr = findDeviceDescription(zway_device,instance_id)
 				if (descr ~= nil) then
-					debug(string.format("Creating device for zway dev #%s , instance #%s",device_id,instance_id))
-					luup.chdev.append(
-						lul_device, handle, 	-- parent device and handle
-						device_id.."."..instance_id , descr.name, 				-- id and description
-						descr.devicetype, 		-- device type
-						descr.DFile, descr.IFile, -- device filename and implementation filename
-						descr.Parameters, 				-- uPNP child device parameters: "service,variable=value\nservice..."
-						false,							-- embedded
-						false								-- invisible
-					)
+          local altid = device_id.."."..instance_id
+          parent [altid] = {device_id = device_id, zway_device = zway_device}
+          appendZwayDevice (lul_device, handle, altid, descr)
 				end
 			end
 		end
 	end
-
-	luup.chdev.sync(lul_device, handle)
-	
+	luup.chdev.sync(lul_device, handle, no_reload)   -- make all the top-level devices
+  	
+  -- now for all lower-level instances
+	for devNo, dev in pairs(luup.devices) do
+    local p = parent [dev.id]
+    if p then
+      getmetatable(dev).__index.handle_children = true       -- ensure parent handles Zwave actions
+      local handle = luup.chdev.start(devNo);
+      local device_id, zway_device = p.device_id, p.zway_device
+      for instance_id,instance in pairs(zway_device.instances) do 
+        if instance_id ~= "0" then
+          local descr = findDeviceDescription(zway_device,instance_id)
+          if (descr ~= nil) then
+            local altid = device_id.."."..instance_id
+            appendZwayDevice (devNo, handle, altid, descr)
+          end
+        end
+      end
+      luup.chdev.sync(devNo, handle, no_reload)   -- make the lower-level devices for this top-level one
+		end
+	end
+  	
 	debug(string.format("Updating Vera devices"))
 	for zway_device_id,zway_device in pairs(zway_tree.devices) do
-		if (zway_device_id~="1") then
-			initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
-		end
+		initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
 	end
 	return true -- success if it comes here, otherwise luup will reload
 end
