@@ -982,7 +982,9 @@ local function resyncZwayDevices(lul_device)
   	
 	debug(string.format("Updating Vera devices"))
 	for zway_device_id,zway_device in pairs(zway_tree.devices) do
-		initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
+-		if (zway_device_id~="1") then
+-			initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
+-		end
 	end
 	return true -- success if it comes here, otherwise luup will reload
 end
