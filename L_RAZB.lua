@@ -525,6 +525,23 @@ local function UserSetPowerTarget(lul_device,lul_settings)
 	return myHttp(url,"POST","")
 end
 
+--serviceId=urn:upnp-org:serviceId:Dimming1&action=SetLoadLevelTarget&newLoadlevelTarget=32 
+local function UserSetLoadLevelTarget(lul_device,lul_settings)
+	local newLoadlevelTarget = tonumber(lul_settings.newLoadlevelTarget) or 0
+	luup.log(string.format("UserSetLoadLevelTarget(%s,%s)",lul_device,newLoadlevelTarget))
+	debug(string.format("UserSetLoadLevelTarget(%s,%s)",lul_device,newLoadlevelTarget))
+	local zwid = luup.attr_get('altid',lul_device)
+  newLoadlevelTarget = newLoadlevelTarget % 256
+  
+	local url = string.format(
+		"http://%s:8083/ZWave.zway/Run/devices[%s].instances[0].commandClasses[%s].Set(%s,255)",
+		this_ipaddr,
+		zwid,
+		38,
+		newLoadlevelTarget)
+	return myHttp(url,"POST","")
+end
+
 -- urn:micasaverde-com:serviceId:SecuritySensor1
 local function UserSetArmed(lul_device,lul_settings)
 	local newArmedValue = tonumber(lul_settings.newArmedValue)
@@ -538,7 +555,8 @@ end
 
 local ActionMap = {
 	["urn:micasaverde-com:serviceId:SecuritySensor1.SetArmed"] = UserSetArmed,
-	["urn:upnp-org:serviceId:SwitchPower1.SetTarget"] = UserSetPowerTarget	
+	["urn:upnp-org:serviceId:SwitchPower1.SetTarget"] = UserSetPowerTarget,
+  ["urn:upnp-org:serviceId:Dimming1.SetLoadLevelTarget"] = UserSetLoadLevelTarget, 
 }
 local function generic_action (serviceId, name)
 	local key = serviceId .. "." .. name
@@ -1004,9 +1022,9 @@ local function resyncZwayDevices(lul_device)
   	
 	debug(string.format("Updating Vera devices"))
 	for zway_device_id,zway_device in pairs(zway_tree.devices) do
--		if (zway_device_id~="1") then
--			initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
--		end
+		if (zway_device_id~="1") then
+			initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
+		end
 	end
 	return true -- success if it comes here, otherwise luup will reload
 end
@@ -10777,7 +10795,7 @@ function initstatus(lul_device)
 
 	log("initstatus("..lul_device..") starting version: "..version)	
 	math.randomseed( os.time() )
-	checkVersion(lul_device)
+--	checkVersion(lul_device)    -- openLuup is always UI7 compatible
 
 	local delay = 10		-- delaying first refresh by x seconds
 	luup.devices[lul_device].action_callback (generic_action)     -- catch all undefined action calls
