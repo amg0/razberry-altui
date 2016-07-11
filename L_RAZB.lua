@@ -12,7 +12,7 @@ local RAZB_SERVICE = "urn:upnp-org:serviceId:razb1"
 local devicetype = "urn:schemas-upnp-org:device:razb:1"
 local DEBUG_MODE = false	-- controlled by UPNP action
 local WFLOW_MODE = false	-- controlled by UPNP action
-local version = "v0.05"
+local version = "v0.06beta"
 local UI7_JSON_FILE= "D_RAZB.json"
 local json = require("dkjson")
 
@@ -815,9 +815,18 @@ local function updateWakeUp( lul_device , cmdClass )
 	setVariableIfChanged("urn:micasaverde-com:serviceId:ZWaveDevice1", "WakeupInterval", cmdClass.data.interval.value, lul_device)
 end
 
+local function updateSwitchMultiLevel( lul_device , cmdClass )
+	debug(string.format("updateSwitchMultiLevel(%s,%s)",lul_device,json.encode(cmdClass)))
+	local value = tonumber (cmdClass.data.level.value) or 0
+	setVariableIfChanged("urn:upnp-org:serviceId:Dimming1", "LoadLevelStatus", value, lul_device)
+	setVariableIfChanged("urn:upnp-org:serviceId:Dimming1", "LoadLevelTarget", value, lul_device)
+end
+
+
  -- one entry per cmdClass which we know how to decode and update VERA device from
 local updateCommandClassDataMap = {
 	["37"] = updateSwitchBinary,
+	["38"] = updateSwitchMultiLevel,
 	["48"] = updateSensorBinary,
 	["49"] = updateSensorMultiLevel,
 	["128"] = updateBatteryLevel,
@@ -935,6 +944,19 @@ local function refreshDevices( lul_device, zway_data )
 				end
 		end
 	end
+end
+
+local function appendZwayDevice (lul_device, handle, altid, descr)
+  debug(string.format("Creating device for zway dev-instance #%s", altid))
+  luup.chdev.append(
+    lul_device, handle, 	-- parent device and handle
+    altid , descr.name, 				-- id and description
+    descr.devicetype, 		-- device type
+    descr.DFile, descr.IFile, -- device filename and implementation filename
+    descr.Parameters, 				-- uPNP child device parameters: "service,variable=value\nservice..."
+    false,							-- embedded
+    false								-- invisible
+  )
 end
 
 -- create correct parent/child relationship between instances
