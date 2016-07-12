@@ -635,6 +635,7 @@ local loader = require "openLuup.loader"    -- just keeping this require near th
 
 local function findGenericDevice (zway_device, instance_id)
   
+
   -- map between DeviceClasses and Vera categories and generic devices
   -- TODO:  add finer detail with instance_id, etc...
   local DeviceClassMap = {
@@ -652,8 +653,14 @@ local function findGenericDevice (zway_device, instance_id)
 --    [0x14] = {label="Z/IP Gateway",       category = 19},
 --    [0x15] = {label="Z/IP Node"},
     [0x16] = {label="Ventilation",        category = 5,   upnp_file = "D_HVAC_ZoneThermostat1.xml"},
-		[0x20] = {label="Binary Sensor", 			category = 4, 	upnp_file = "D_MotionSensor1.xml"},
-    [0x21] = {label="Multilevel Sensor",  category = 12,  upnp_file = "D_MotionSensor1.xml"},  -- D_GenericSensor1
+    [0x20] = {label="Binary Sensor",      category = 4,   upnp_file = "D_MotionSensor1.xml"},
+    [0x21] = {label="Multilevel Sensor",  category = 12,  upnp_file = "D_GenericSensor1.xml",
+        sensor_type = {
+            ["Light"]       = "D_Light.xml",
+            ["Humidity"]    = "D_HumiditySensor1.xml",
+            ["Temperature"] = "D_TemperatureSensor1.xml",
+          }
+      },
     [0x30] = {label="Pulse Meter",        category = 21,  upnp_file = "D_PowerMeter1.xml"},
     [0x31] = {label="Meter",              category = 21,  upnp_file = "D_PowerMeter1.xml"},
     [0x40] = {label="Entry Control",      category = 7,   upnp_file = "D_DoorLock1.xml"},
@@ -979,6 +986,7 @@ local function appendZwayDevice (lul_device, handle, altid, descr)
   )
 end
 
+
 -- create correct parent/child relationship between instances
 local function resyncZwayDevices(lul_device)
   local no_reload = true
@@ -1000,7 +1008,7 @@ local function resyncZwayDevices(lul_device)
 			end
 		end
 	end
-	luup.chdev.sync(lul_device, handle, no_reload)   -- make all the top-level devices
+	local reload = luup.chdev.sync(lul_device, handle, no_reload)   -- sync all the top-level devices
   	
   -- now for all lower-level instances
 	for devNo, dev in pairs(luup.devices) do
@@ -1018,7 +1026,8 @@ local function resyncZwayDevices(lul_device)
           end
         end
       end
-      luup.chdev.sync(devNo, handle, no_reload)   -- make the lower-level devices for this top-level one
+      local reload2 = luup.chdev.sync(devNo, handle, no_reload)   -- sync the lower-level devices for this top-level one
+      reload = reload or reload2
 		end
 	end
   	
@@ -1028,7 +1037,9 @@ local function resyncZwayDevices(lul_device)
 			initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
 		end
 	end
-	return true -- success if it comes here, otherwise luup will reload
+	
+  if reload then luup.reload () end
+  
 end
 
 function getZWayData(lul_device,forcedtimestamp)
