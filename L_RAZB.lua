@@ -511,6 +511,7 @@ end
 local function UserSetPowerTarget(lul_device,lul_settings)
 	local newTargetValue = tonumber(lul_settings.newTargetValue)
 	debug(string.format("UserSetPowerTarget(%s,%s)",lul_device,newTargetValue))
+	setVariableIfChanged("urn:upnp-org:serviceId:SwitchPower1", "Target", newTargetValue, lul_device)
 	local zwid = luup.attr_get('altid',lul_device)
 	if (newTargetValue >0) then
 		newTargetValue = 255
@@ -530,6 +531,7 @@ local function UserSetLoadLevelTarget(lul_device,lul_settings)
 	local newLoadlevelTarget = tonumber(lul_settings.newLoadlevelTarget) or 0
 	luup.log(string.format("UserSetLoadLevelTarget(%s,%s)",lul_device,newLoadlevelTarget))
 	debug(string.format("UserSetLoadLevelTarget(%s,%s)",lul_device,newLoadlevelTarget))
+	setVariableIfChanged("urn:upnp-org:serviceId:Dimming1", "LoadLevelTarget", newLoadlevelTarget, lul_device)
 	local zwid = luup.attr_get('altid',lul_device)
   newLoadlevelTarget = newLoadlevelTarget % 256
   
@@ -760,7 +762,7 @@ local function updateSwitchBinary( lul_device , cmdClass )
 		value = 1
 	end
 	setVariableIfChanged("urn:upnp-org:serviceId:SwitchPower1", "Status", value, lul_device)
-	setVariableIfChanged("urn:upnp-org:serviceId:SwitchPower1", "Target", value, lul_device)
+	-- setVariableIfChanged("urn:upnp-org:serviceId:SwitchPower1", "Target", value, lul_device)
 end
 
 local function updateSensorMultiLevel( lul_device , cmdClass )
@@ -837,7 +839,7 @@ local function updateSwitchMultiLevel( lul_device , cmdClass )
 	debug(string.format("updateSwitchMultiLevel(%s,%s)",lul_device,json.encode(cmdClass)))
 	local value = tonumber (cmdClass.data.level.value) or 0
 	setVariableIfChanged("urn:upnp-org:serviceId:Dimming1", "LoadLevelStatus", value, lul_device)
-	setVariableIfChanged("urn:upnp-org:serviceId:Dimming1", "LoadLevelTarget", value, lul_device)
+	-- setVariableIfChanged("urn:upnp-org:serviceId:Dimming1", "LoadLevelTarget", value, lul_device)
 end
 
 
