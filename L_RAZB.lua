@@ -673,7 +673,7 @@ local function findGenericDevice (zway_device, instance_id,sensor_type)
   if map and map.upnp_file then
     local upnp_file = map.upnp_file		
 		local device_type = "urn:schemas-upnp-org:device:razb:unk:1"
-		if (sensor_type ~= nil and map.sensor_type[sensor_type]~=nil) then
+		if (map.sensor_type ~= nil and map.sensor_type[sensor_type]~=nil) then
 			upnp_file = map.sensor_type[sensor_type].upnp_file or map.upnp_file
 			device_type = map.sensor_type[sensor_type].device_type or "urn:schemas-upnp-org:device:razb:unk:1"
 		end
