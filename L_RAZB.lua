@@ -655,7 +655,7 @@ local function findGenericDevice (zway_device, instance_id,sensor_type)
     [0x20] = {label="Binary Sensor",      category = 4,   upnp_file = "D_MotionSensor1.xml"},
     [0x21] = {label="Multilevel Sensor",  category = 12,  upnp_file = "D_GenericSensor1.xml",
         sensor_type = {
-            ["Light"]       = {upnp_file="D_Light.xml", device_type="urn:schemas-micasaverde-com:device:LightSensor:1"},
+            ["Light"]       = {upnp_file="D_LightSensor1.xml", device_type="urn:schemas-micasaverde-com:device:LightSensor:1"},
             ["Humidity"]    = {upnp_file="D_HumiditySensor1.xml", device_type="urn:schemas-micasaverde-com:device:HumiditySensor:1"},
             ["Temperature"] = {upnp_file="D_TemperatureSensor1.xml", device_type="urn:schemas-micasaverde-com:device:TemperatureSensor:1"},
           }
