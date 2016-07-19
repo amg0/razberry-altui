@@ -623,8 +623,7 @@ local DeviceDiscoveryTable = {
 local loader = require "openLuup.loader"    -- just keeping this require near the place it's used,
                                             -- rather than at the start of the file at the moment.
 
-----------------------------------------------------
-
+-------------------------------
 -- GENERIC DEVICES
 -- blame @akbooer
 
@@ -709,10 +708,6 @@ local function findGenericDevice (zway_device, instance_id,sensor_type)
 	return nil
 end
 
-
-----------------------------------------------------
-
-
 local function findDeviceDescription( zway_device , instance_id , sensor_type )
 	debug(string.format("findDeviceDescription for instance %s sensor:'%s'",instance_id,sensor_type or '' ))
 
@@ -744,7 +739,7 @@ local function findDeviceDescription( zway_device , instance_id , sensor_type )
 	end
 	
 	if (result == nil) then
-			result = findGenericDevice(zway_device, instance_id,sensor_type) or unknown_device
+		result = findGenericDevice(zway_device, instance_id,sensor_type) or unknown_device
 	end
 	
 	return result
@@ -1026,70 +1021,56 @@ local function resyncZwayDevices(lul_device)
       local handle = luup.chdev.start(devNo);
       local device_id, zway_device = p.device_id, p.zway_device
       for instance_id,instance in pairs(zway_device.instances) do 
-				debug( string.format("Instance %s", instance_id))
-				-- treat the SensorMultiLevel situation
-				-- even on instance 0
-				if (instance.commandClasses["49"] ~= nil ) then
-					-- sensor type
-					local class_data = instance.commandClasses["49"].data
-					-- debug( string.format("Sensor 49 data %s", json.encode(class_data)) )
-					-- in case of sensor
-					for k,sensor_type in pairs({
-							["1"]="Temperature",
-							["3"]="Light",
-							["5"]="Humidity",
-							["27"]="Ultraviolet"
-						}) do
-						if (class_data[k] ~= nil) then
-							local descr = findDeviceDescription(zway_device,instance_id,sensor_type)
-							if (descr ~= nil) then
-								local altid = string.format("%s.%s.%s.%s",device_id,instance_id,49,k)
-								appendZwayDevice (devNo, handle, altid, descr)
-							end
-						end
-					end
-				else
-					-- classical situation
-					if instance_id ~= "0" then
-						-- debug( string.format("No Sensor data"))
-						local descr = findDeviceDescription(zway_device,instance_id)
-						if (descr ~= nil) then
-							local altid = device_id.."."..instance_id
-							appendZwayDevice (devNo, handle, altid, descr)
-						end
+		debug( string.format("Instance %s", instance_id))
+		-- treat the SensorMultiLevel situation
+		-- even on instance 0
+		if (instance.commandClasses["49"] ~= nil ) then
+			-- sensor type
+			local class_data = instance.commandClasses["49"].data
+			-- debug( string.format("Sensor 49 data %s", json.encode(class_data)) )
+			-- in case of sensor
+			for k,sensor_type in pairs({
+					["1"]="Temperature",
+					["3"]="Light",
+					["5"]="Humidity",
+					["27"]="Ultraviolet"
+				}) do
+				if (class_data[k] ~= nil) then
+					local descr = findDeviceDescription(zway_device,instance_id,sensor_type)
+					if (descr ~= nil) then
+						local altid = string.format("%s.%s.%s.%s",device_id,instance_id,49,k)
+						appendZwayDevice (devNo, handle, altid, descr)
 					end
 				end
-				-- if (instance.commandClasses["49"] ~=nil ) then
-					-- local cmdclasses = instance.commandClasses["49"].data
-					-- for k,v in pairs({"1","3","5","27"}) do
-						-- if (cmdclasses[v] ~= nil) then
-							-- local altid = device_id.."."..instance_id
-							-- if (instancecontainers[ altid ]==nil) then
-								-- instancecontainers[ altid ]={}
-							-- end
-							-- table.insert( instancecontainers[ altid ], {device_id = device_id, instance_id = instance_id, sensor_type=v,  zway_device = zway_device} )
-						-- end
+			end
+		else
+			-- classical situation
+			if instance_id ~= "0" then
+				-- debug( string.format("No Sensor data"))
+				local descr = findDeviceDescription(zway_device,instance_id)
+				if (descr ~= nil) then
+					local altid = device_id.."."..instance_id
+					appendZwayDevice (devNo, handle, altid, descr)
+				end
+			end
+		end
+		-- if (instance.commandClasses["49"] ~=nil ) then
+			-- local cmdclasses = instance.commandClasses["49"].data
+			-- for k,v in pairs({"1","3","5","27"}) do
+				-- if (cmdclasses[v] ~= nil) then
+					-- local altid = device_id.."."..instance_id
+					-- if (instancecontainers[ altid ]==nil) then
+						-- instancecontainers[ altid ]={}
 					-- end
+					-- table.insert( instancecontainers[ altid ], {device_id = device_id, instance_id = instance_id, sensor_type=v,  zway_device = zway_device} )
 				-- end
+			-- end
+		-- end
       end
       local reload2 = luup.chdev.sync(devNo, handle, no_reload)   -- sync the lower-level devices for this top-level one
       reload = reload or reload2
 		end
 	end
-	
-  -- now for all sensor-level instances
-	-- for devNo, dev in pairs(luup.devices) do
-		-- local p = instancecontainers[dev.id]
-    -- if p then
-      -- local handle = luup.chdev.start(devNo);
-			-- for k,v in pairs(p) do
-				-- local descr = findDeviceDescription(v.zway_device,v.instance_id,v.sensor_type)
-				-- local altid = device_id.."."..instance_id.."."..v.sensor_type
-				-- appendZwayDevice (devNo, handle, altid, descr)
-			-- end
-      -- luup.chdev.sync(devNo, handle, no_reload)   -- make the sensor-level devices for this top-level one
-  	-- end
-  -- end
 	
 	-- debug(string.format("instancecontainers: %s",json.encode(instancecontainers)))
 	debug(string.format("Updating Vera devices"))
@@ -1179,14 +1160,12 @@ function startupDeferred(lul_device)
 	luup.register_handler("myRAZB_Handler","RAZB_Handler")
 
 	-- NOTHING to start 
-    
-		luup.set_failure(0,lul_device)	-- openLuup is UI7 compatible
-	
-	log("startup completed")
+	luup.set_failure(0,lul_device)	-- openLuup is UI7 compatible
 	
 	-- get data
 	getZWayData(lul_device)
-
+	
+	log("startup completed")	
 end
 		
 function initstatus(lul_device)
