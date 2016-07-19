@@ -530,12 +530,11 @@ end
 --serviceId=urn:upnp-org:serviceId:Dimming1&action=SetLoadLevelTarget&newLoadlevelTarget=32 
 local function UserSetLoadLevelTarget(lul_device,lul_settings)
 	local newLoadlevelTarget = tonumber(lul_settings.newLoadlevelTarget) or 0
-	luup.log(string.format("UserSetLoadLevelTarget(%s,%s)",lul_device,newLoadlevelTarget))
 	debug(string.format("UserSetLoadLevelTarget(%s,%s)",lul_device,newLoadlevelTarget))
 	setVariableIfChanged("urn:upnp-org:serviceId:Dimming1", "LoadLevelTarget", newLoadlevelTarget, lul_device)
 	local zwid = luup.attr_get('altid',lul_device)
-  newLoadlevelTarget = newLoadlevelTarget % 256
-  
+	newLoadlevelTarget = newLoadlevelTarget % 256
+
 	local url = string.format(
 		"http://%s:8083/ZWave.zway/Run/devices[%s].instances[0].commandClasses[%s].Set(%s,255)",
 		this_ipaddr,
