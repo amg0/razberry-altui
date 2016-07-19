@@ -12,7 +12,7 @@ local RAZB_SERVICE = "urn:upnp-org:serviceId:razb1"
 local devicetype = "urn:schemas-upnp-org:device:razb:1"
 local DEBUG_MODE = false	-- controlled by UPNP action
 local WFLOW_MODE = false	-- controlled by UPNP action
-local version = "v0.07beta"
+local version = "v0.08beta"
 local UI7_JSON_FILE= "D_RAZB.json"
 local json = require("dkjson")
 
@@ -875,20 +875,18 @@ local function initDeviceInstanceFromZWayData( lul_device, zway_device_id, insta
 		debug(string.format("initDeviceInstanceFromZWayData could not find device %s in parent %s",zway_device_id.."."..instance_id,lul_device))
 		return -1
 	end
-	
-	-- update device header
-	luup.attr_set( "manufacturer", zway_device.data.vendorString.value , veraDeviceId)
-	setVariableIfChanged(
-		RAZB_SERVICE, "ZW_PID", 
-		string.format("%s-%s-%s-%s",
-			zway_device.data.manufacturerId.value,
-			zway_device.data.manufacturerProductType.value,
-			zway_device.data.manufacturerProductId.value,
-			instance_id), 
-		veraDeviceId)
-	
+		
 	-- update status variables from zway instance cmdClass data
 	local instance = zway_device.instances[instance_id]	
+
+	setVariableIfChanged(
+		RAZB_SERVICE, "ZW_Generic_Specific", 
+		string.format("%s_%s",
+			instance.data.genericType.value,
+			instance.data.specificType.value
+		), 
+	veraDeviceId)
+
 	for cmdClass_id,cmdClass in pairs(instance.commandClasses) do 
 		local updateFunc = updateCommandClassDataMap[cmdClass_id]
 		if (updateFunc ~= nil) then
@@ -926,7 +924,21 @@ local function initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
 	for instance_id,instance in pairs(zway_device.instances) do 
 		initDeviceInstanceFromZWayData( lul_device, zway_device_id, instance_id , zway_device )
 	end
+
+	-- update device with ZW specific information 
 	local veraDeviceId = findChild(lul_device, zway_device_id..".0")
+	-- this info could depend on the fact that the user selected a device description in the zway user interface ( peperdb ! )
+	luup.attr_set( "manufacturer", zway_device.data.vendorString.value , veraDeviceId)
+	setVariableIfChanged(
+		RAZB_SERVICE, "ZW_PID", 
+		string.format("%s_%s_%s_%s",
+			zway_device.data.manufacturerId.value,
+			zway_device.data.manufacturerProductType.value,
+			zway_device.data.manufacturerProductId.value,
+			instance_id), 
+		veraDeviceId)		
+		  
+	-- update device with VERA type of information 
 	setVariableIfChanged(
 		"urn:micasaverde-com:serviceId:ZWaveDevice1","ManufacturerInfo",
 		string.format("%s,%s,%s",
@@ -965,17 +977,17 @@ local function refreshDevices( lul_device, zway_data )
 				debug("Unknown zWay device:"..devid )
 			end
 		else
-				-- try to decode NIF
-				devid = k:match("devices%.(%d+)%.data%.nodeInfoFrame")
-				if (devid ~= nil ) then
-					local vera_id, child_v = findChild( lul_device, devid..".0" )
-					setVariableIfChanged(
-						"urn:micasaverde-com:serviceId:ZWaveDevice1","NodeInfo",
-						zWayToVeraNodeInfo(v.value),
-						vera_id)					
-				else
-					debug("ignoring zway update key:"..k)
-				end
+			-- try to decode NIF
+			devid = k:match("devices%.(%d+)%.data%.nodeInfoFrame")
+			if (devid ~= nil ) then
+				local vera_id, child_v = findChild( lul_device, devid..".0" )
+				setVariableIfChanged(
+					"urn:micasaverde-com:serviceId:ZWaveDevice1","NodeInfo",
+					zWayToVeraNodeInfo(v.value),
+					vera_id)					
+			else
+				debug("ignoring zway update key:"..k)
+			end
 		end
 	end
 end
@@ -984,35 +996,33 @@ local function appendZwayDevice (lul_device, handle, altid, descr)
   debug(string.format("Creating device for zway dev-instance #%s", altid))
   luup.chdev.append(
     lul_device, handle, 	-- parent device and handle
-    altid , descr.name, 				-- id and description
+    altid , descr.name, 	-- id and description
     descr.devicetype, 		-- device type
     descr.DFile, descr.IFile, -- device filename and implementation filename
     descr.Parameters, 				-- uPNP child device parameters: "service,variable=value\nservice..."
     false,							-- embedded
-    false								-- invisible
+    false							-- invisible
   )
 end
 
-
 -- create correct parent/child relationship between instances
 local function resyncZwayDevices(lul_device)
-  local no_reload = true
+	local no_reload = true
 	lul_device = tonumber(lul_device)
 	debug(string.format("resyncZwayDevices(%s)",lul_device))
 	
-  -- for all top-level ["0"] instances
-  local parent = {}
-	local instancecontainers = {}
-	
-  local handle = luup.chdev.start(lul_device);
+	-- for all top-level ["0"] instances
+	local parent = {}
+
+	local handle = luup.chdev.start(lul_device);
 	for device_id,zway_device in pairs(zway_tree.devices) do
 		if (device_id~="1") then
 			for instance_id,instance in pairs({["0"] = zway_device.instances["0"]}) do 
 				local descr = findDeviceDescription(zway_device,instance_id)
 				if (descr ~= nil) then
-          local altid = device_id.."."..instance_id
-          parent [altid] = {device_id = device_id, zway_device = zway_device}
-          appendZwayDevice (lul_device, handle, altid, descr)
+					local altid = device_id.."."..instance_id
+					parent [altid] = {device_id = device_id, zway_device = zway_device}
+					appendZwayDevice (lul_device, handle, altid, descr)
 				end
 			end
 		end
@@ -1078,7 +1088,10 @@ local function resyncZwayDevices(lul_device)
 		end
 	end
 	
-	-- debug(string.format("instancecontainers: %s",json.encode(instancecontainers)))
+	-- reload if needed
+	if reload then luup.reload () end
+  
+	-- if we are here, it means we did not reload and we can update the devices that were created
 	debug(string.format("Updating Vera devices"))
 	for zway_device_id,zway_device in pairs(zway_tree.devices) do
 		if (zway_device_id~="1") then
@@ -1086,8 +1099,6 @@ local function resyncZwayDevices(lul_device)
 		end
 	end
 	
-  if reload then luup.reload () end
-  
 end
 
 function getZWayData(lul_device,forcedtimestamp)
