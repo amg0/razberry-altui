@@ -708,6 +708,12 @@ local function findGenericDevice (zway_device, instance_id,sensor_type)
 	return nil
 end
 
+local function getIconPath( zway_device , instance_id )
+	local generic  = zway_device.instances[instance_id].data.genericType.value
+	local specific = zway_device.instances[instance_id].data.specificType.value
+	return string.format("http://%s:8081/pics/icons/device_icon_%s_%s.png",this_ipaddr,generic,specific)
+end
+
 local function findDeviceDescription( zway_device , instance_id , sensor_type )
 	debug(string.format("findDeviceDescription for instance %s sensor:'%s'",instance_id,sensor_type or '' ))
 
@@ -716,7 +722,7 @@ local function findDeviceDescription( zway_device , instance_id , sensor_type )
 		["devicetype"]="urn:schemas-upnp-org:device:razb:unk:1",
 		["DFile"]="D_RAZB_UNK.xml",
 		["IFile"]="",
-		["Parameters"]="",	-- "service,variable=value\nservice..."
+		["Parameters"]="urn:upnp-org:serviceId:razbunk1,IconCode=".. getIconPath( zway_device , instance_id ) .."\n",	-- "service,variable=value\nservice..."
 	}
 	
 	-- return a device description in VERA's terms
