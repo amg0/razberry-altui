@@ -7,15 +7,15 @@
 -- // but WITHOUT ANY WARRANTY; without even the implied warranty of
 -- // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE . 
 
+local version = "v0.08beta"
+
 local MSG_CLASS = "RAZB"
 local RAZB_SERVICE = "urn:upnp-org:serviceId:razb1"
 local devicetype = "urn:schemas-upnp-org:device:razb:1"
 local DEBUG_MODE = false	-- controlled by UPNP action
-local WFLOW_MODE = false	-- controlled by UPNP action
-local version = "v0.08beta"
 local UI7_JSON_FILE= "D_RAZB.json"
-local json = require("dkjson")
 
+local json = require("dkjson")
 local mime = require("mime")
 local socket = require("socket")
 local http = require("socket.http")
@@ -24,8 +24,9 @@ local ltn12 = require("ltn12")
 local modurl = require "socket.url"
 
 local DATA_REFRESH_RATE = 2		-- refresh rate from zway
-local timestamp = 0						-- last timestamp received
-local zway_tree = {}						-- zWay data model tree ( agregates all info as we receives it )
+local timestamp = 0				-- last timestamp received
+local zway_controller_id = "1"	-- zway device id of the razberry controller 
+local zway_tree = {}			-- zWay data model tree ( agregates all info as we receives it )
 local this_device
 local this_ipaddr
 
@@ -33,108 +34,6 @@ local this_ipaddr
 -- http://wiki.micasaverde.com/index.php/ZWave_Debugging
 -- mapping zWave to D_XML
 -- https://github.com/yepher/RaZBerry/blob/master/README.md
--- <DeviceClasses>
-  -- <Basic key="0x01" label="Controller" />
-  -- <Basic key="0x02" label="Static Controller" />
-  -- <Basic key="0x03" label="Slave" />
-  -- <Basic key="0x04" label="Routing Slave" />
-  -- <Generic key="0x01" label="Remote Controller" command_classes="0xef,0x20">
-    -- <Specific key="0x01" label="Portable Remote Controller" />
-    -- <Specific key="0x02" label="Portable Scene Controller" command_classes="0x2d,0x72,0x85,0xef,0x2b" />
-    -- <Specific key="0x03" label="Portable Installer Tool" command_classes="0x21,0x72,0x86,0x8f,0xef,0x21,0x60,0x70,0x72,0x84,0x85,0x86,0x8e" />
-  -- </Generic>
-  -- <Generic key="0x02" label="Static Controller" command_classes="0xef,0x20">
-    -- <Specific key="0x01" label="Static PC Controller" />
-    -- <Specific key="0x02" label="Static Scene Controller" command_classes="0x2d,0x72,0x85,0xef,0x2b" />
-    -- <Specific key="0x03" label="Static Installer Tool" command_classes="0x21,0x72,0x86,0x8f,0xef,0x21,0x60,0x70,0x72,0x84,0x85,0x86,0x8e" />
-  -- </Generic>
-  -- <Generic key="0x03" label="AV Control Point" command_classes="0x20">
-    -- <Specific key="0x04" label="Satellite Receiver" command_classes="0x72,0x86,0x94" />
-    -- <Specific key="0x11" label="Satellite Receiver V2" command_classes="0x72,0x86,0x94" basic="0x94" />
-    -- <Specific key="0x12" label="Doorbell" command_classes="0x30,0x72,0x85,0x86" basic="0x30"/>
-  -- </Generic>
-  -- <Generic key="0x04" label="Display" command_classes="0x20">
-    -- <Specific key="0x01" label="Simple Display" command_classes="0x72,0x86,0x92,0x93" />
-  -- </Generic>
-  -- <Generic key="0x08" label="Thermostat" command_classes="0x20">
-    -- <Specific key="0x01" label="Heating Thermostat" />
-    -- <Specific key="0x02" label="General Thermostat" command_classes="0x40,0x43,0x72" basic="0x40" />
-    -- <Specific key="0x03" label="Setback Schedule Thermostat" command_classes="0x46,0x72,0x86,0x8f,0xef,0x46,0x81,0x8f" basic="0x46" />
-    -- <Specific key="0x04" label="Setpoint Thermostat" command_classes="0x43,0x72,0x86,0x8f,0xef,0x43,0x8f" basic="0x43" />
-    -- <Specific key="0x05" label="Setback Thermostat" command_classes="0x40,0x43,0x47,0x72,0x86" basic="0x40" />
-    -- <Specific key="0x06" label="General Thermostat V2" command_classes="0x40,0x43,0x72,0x86" basic="0x40" />
-  -- </Generic>
-  -- <Generic key="0x09" label="Window Covering" command_classes="0x20">
-    -- <Specific key="0x01" label="Simple Window Covering" command_classes="0x50" basic="0x50" />
-  -- </Generic>
-  -- <Generic key="0x0f" label="Repeater Slave" command_classes="0x20">
-    -- <Specific key="0x01" label="Basic Repeater Slave" />
-  -- </Generic>
-  -- <Generic key="0x10" label="Binary Switch" command_classes="0x20,0x25" basic="0x25">
-    -- <Specific key="0x01" label="Binary Power Switch" command_classes="0x27" />
-    -- <Specific key="0x03" label="Binary Scene Switch" command_classes="0x27,0x2b,0x2c,0x72" />
-  -- </Generic>
-  -- <Generic key="0x11" label="Multilevel Switch" command_classes="0x20,0x26" basic="0x26">
-    -- <Specific key="0x01" label="Multilevel Power Switch" command_classes="0x27" />
-    -- <Specific key="0x03" label="Multiposition Motor" command_classes="0x72,0x86" />
-    -- <Specific key="0x04" label="Multilevel Scene Switch" command_classes="0x27,0x2b,0x2c,0x72" />
-    -- <Specific key="0x05" label="Motor Control Class A" command_classes="0x25,0x72,0x86" />
-    -- <Specific key="0x06" label="Motor Control Class B" command_classes="0x25,0x72,0x86" />
-    -- <Specific key="0x07" label="Motor Control Class C" command_classes="0x25,0x72,0x86" />
-  -- </Generic>
-  -- <Generic key="0x12" label="Remote Switch" command_classes="0xef,0x20">
-    -- <Specific key="0x01" label="Binary Remote Switch" command_classes="0xef,0x25" basic="0x25"/>
-    -- <Specific key="0x02" label="Multilevel Remote Switch" command_classes="0xef,0x26" basic="0x26"/>
-    -- <Specific key="0x03" label="Binary Toggle Remote Switch" command_classes="0xef,0x28" basic="0x28"/>
-    -- <Specific key="0x04" label="Multilevel Toggle Remote Switch" command_classes="0xef,0x29" basic="0x29"/>
-  -- </Generic>
-  -- <Generic key="0x13" label="Toggle Switch" command_classes="0x20" >
-    -- <Specific key="0x01" label="Binary Toggle Switch" command_classes="0x25,0x28" basic="0x28" />
-    -- <Specific key="0x02" label="Multilevel Toggle Switch" command_classes="0x26,0x29" basic="0x29" />
-  -- </Generic>
-  -- <Generic key="0x14" label="Z/IP Gateway" command_classes="0x20">
-    -- <Specific key="0x01" label="Z/IP Tunneling Gateway" command_classes="0x23,0x24,0x72,0x86"/>
-    -- <Specific key="0x02" label="Z/IP Advanced Gateway" command_classes="0x23,0x24,0x2f,0x33,0x72,0x86"/>
-  -- </Generic>
-  -- <Generic key="0x15" label="Z/IP Node">
-    -- <Specific key="0x01" label="Z/IP Tunneling Node" command_classes="0x23,0x2e,0x72,0x86" />
-    -- <Specific key="0x02" label="Z/IP Advanced Node" command_classes="0x23,0x2e,0x2f,0x34,0x72,0x86" />
-  -- </Generic>
-  -- <Generic key="0x16" label="Ventilation" command_classes="0x20">
-    -- <Specific key="0x01" label="Residential Heat Recovery Ventilation" command_classes="0x37,0x39,0x72,0x86" basic="0x39"/>
-  -- </Generic>
-  -- <Generic key="0x20" label="Binary Sensor" command_classes="0x30,0xef,0x20" basic="0x30">
-    -- <Specific key="0x01" label="Routing Binary Sensor" />
-  -- </Generic>
-  -- <Generic key="0x21" label="Multilevel Sensor" command_classes="0x31,0xef,0x20" basic="0x31">
-    -- <Specific key="0x01" label="Routing Multilevel Sensor" />
-  -- </Generic>
-  -- <Generic key="0x30" label="Pulse Meter" command_classes="0x35,0xef,0x20" basic="0x35"/>
-  -- <Generic key="0x31" label="Meter" command_classes="0xef,0x20">
-    -- <Specific key="0x01" label="Simple Meter" command_classes="0x32,0x72,0x86" basic="0x32" />
-  -- </Generic>
-  -- <Generic key="0x40" label="Entry Control" command_classes="0x20">
-    -- <Specific key="0x01" label="Door Lock" command_classes="0x62" basic="0x62"/>
-    -- <Specific key="0x02" label="Advanced Door Lock" command_classes="0x62,0x72,0x86" basic="0x62"/>
-    -- <Specific key="0x03" label="Secure Keypad Door Lock" command_classes="0x62,0x63,0x72,0x86,0x98" basic="0x62"/>
-  -- </Generic>
-  -- <Generic key="0x50" label="Semi Interoperable" command_classes="0x20,0x72,0x86,0x88">
-    -- <Specific key="0x01" label="Energy Production" command_classes="0x90" />
-  -- </Generic>
-  -- <Generic key="0xa1" label="Alarm Sensor" command_classes="0xef,0x20" basic="0x71">
-    -- <Specific key="0x01" label="Basic Routing Alarm Sensor" command_classes="0x71,0x72,0x85,0x86,0xef,0x71" />
-    -- <Specific key="0x02" label="Routing Alarm Sensor" command_classes="0x71,0x72,0x80,0x85,0x86,0xef,0x71" />
-    -- <Specific key="0x03" label="Basic Zensor Alarm Sensor" command_classes="0x71,0x72,0x86,0xef,0x71" />
-    -- <Specific key="0x04" label="Zensor Alarm Sensor" command_classes="0x71,0x72,0x80,0x86,0xef,0x71" />
-    -- <Specific key="0x05" label="Advanced Zensor Alarm Sensor" command_classes="0x71,0x72,0x80,0x85,0x86,0xef,0x71" />
-    -- <Specific key="0x06" label="Basic Routing Smoke Sensor" command_classes="0x71,0x72,0x85,0x86,0xef,0x71" />
-    -- <Specific key="0x07" label="Routing Smoke Sensor" command_classes="0x71,0x72,0x80,0x85,0x86,0xef,0x71" />
-    -- <Specific key="0x08" label="Basic Zensor Smoke Sensor" command_classes="0x71,0x72,0x86,0xef,0x71" />
-    -- <Specific key="0x09" label="Zensor Smoke Sensor" command_classes="0x71,0x72,0x80,0x86,0xef,0x71" />
-    -- <Specific key="0x0a" label="Advanced Zensor Smoke Sensor" command_classes="0x71,0x72,0x80,0x85,0x86,0xef,0x71" />
-  -- </Generic>
-  -- <Generic key="0xff" label="Non Interoperable" />
--- </DeviceClasses>
 
 ------------------------------------------------
 -- Debug --
@@ -230,22 +129,6 @@ local function getIP()
 	local ip = mySocket:getsockname ()  
 	mySocket: close()  
 	return ip or "127.0.0.1"
-end
-
-------------------------------------------------
--- Check UI7
-------------------------------------------------
-local function checkVersion(lul_device)
-	local ui7Check = luup.variable_get(RAZB_SERVICE, "UI7Check", lul_device) or ""
-	if ui7Check == "" then
-		luup.variable_set(RAZB_SERVICE, "UI7Check", "false", lul_device)
-		ui7Check = "false"
-	end
-	if( luup.version_branch == 1 and luup.version_major == 7 and ui7Check == "false") then
-		luup.variable_set(RAZB_SERVICE, "UI7Check", "true", lul_device)
-		luup.attr_set("device_json", UI7_JSON_FILE, lul_device)
-		luup.reload()
-	end
 end
 
 ------------------------------------------------
@@ -362,7 +245,7 @@ local function findChild( lul_parent, altid )
 	debug(string.format("findChild(%s,%s)",lul_parent,altid))
 	for k,v in pairs(luup.devices) do
 		if( getParent(k)==lul_parent) then
-			if( v.id==altid) then
+			if( getAltID(k) == altid) then
 				return k,v
 			end
 		end
@@ -371,6 +254,23 @@ local function findChild( lul_parent, altid )
 	return nil,nil
 end
 
+
+-----------------------------------------------------
+-- code and decode ALTID from zway path information
+-----------------------------------------------------
+local function generateAltid(devid,instid,cls,variable)
+	local str = string.format("%s.%s",devid,instid or '0')
+	if (cls ~= nil) and (variable ~= nil) then
+		str = str .. string.format(".%s.%s",cls,variable)
+	end
+	return str
+end
+
+local function decodeAltid(altid)
+	local parts = Split(altid,".")
+	return parts[1],parts[2] or '0',parts[3] or '',parts[4] or ''
+	-- local devid,instid,cls,variable
+end
 
 ------------------------------------------------------------------------------------------------
 -- Http handlers : Communication FROM RAZB
@@ -754,54 +654,71 @@ end
 ------------------------------------------------
 -- Update Vera Devices from zWay Cmd Class data
 -- ZWay => VERA
+-- obj = {zwid=devid, instid=instid, cls=cls, var=variable}
 ------------------------------------------------
-local function updateSwitchBinary( lul_device , cmdClass )
+local function getLuupDeviceFromObj( lul_device, obj )
+	local altid = generateAltid(obj.zwid,obj.instid,obj.cls,obj.var)
+	local veraid, veradev = findChild(lul_device,altid)
+	return veraid, veradev
+end
+-- Same but ignore class & variable
+local function getLuupDeviceFromObjInstance( lul_device, obj )
+	local altid = generateAltid(obj.zwid,obj.instid)
+	local veraid, veradev = findChild(lul_device,altid)
+	return veraid, veradev
+end
+
+local function updateSwitchBinary( lul_device, obj , cmdClass )
 	debug(string.format("updateSwitchBinary(%s,%s)",lul_device,json.encode(cmdClass)))
 	local value = 0
 	if (cmdClass.data.level.value==true) then
 		value = 1
 	end
-	setVariableIfChanged("urn:upnp-org:serviceId:SwitchPower1", "Status", value, lul_device)
+	local childid, child = getLuupDeviceFromObjInstance( lul_device, obj )
+	setVariableIfChanged("urn:upnp-org:serviceId:SwitchPower1", "Status", value, childid)
 	-- setVariableIfChanged("urn:upnp-org:serviceId:SwitchPower1", "Target", value, lul_device)
 end
 
-local function updateSensorMultiLevel( lul_device , cmdClass )
+local function updateSensorMultiLevel( lul_device, obj , cmdClass )
 	debug(string.format("updateSensorMultiLevel(%s,%s)",lul_device,json.encode(cmdClass)))
+	local childid, child = getLuupDeviceFromObj( lul_device, obj )
 	-- Incomplete code : 
 	-- for now, just decode the Power sensor
 	if (cmdClass.data["1"] ~= nil) then
-		local altid = luup.devices[lul_device].id .. ".49.1"
-		local child = findChild(lul_device,altid)
+		-- local altid = luup.devices[lul_device].id .. ".49.1"
+		-- local child = findChild(lul_device,altid)
 		local temp = cmdClass.data["1"].val.value
-		setVariableIfChanged("urn:upnp-org:serviceId:TemperatureSensor1", "CurrentTemperature", temp or '', child)
+		setVariableIfChanged("urn:upnp-org:serviceId:TemperatureSensor1", "CurrentTemperature", temp or '', childid)
 	end
 	if (cmdClass.data["3"] ~= nil) then
-		local altid = luup.devices[lul_device].id .. ".49.3"
-		local child = findChild(lul_device,altid)
+		-- local altid = luup.devices[lul_device].id .. ".49.3"
+		-- local child = findChild(lul_device,altid)
 		local lux = cmdClass.data["3"].val.value
-		setVariableIfChanged("urn:micasaverde-com:serviceId:LightSensor1", "CurrentLevel", lux or '', child)
+		setVariableIfChanged("urn:micasaverde-com:serviceId:LightSensor1", "CurrentLevel", lux or '', childid)
 	end
 	if (cmdClass.data["4"] ~= nil) then
-	-- exception
+		-- exception, we log it on the instance level node.
+		local veraid, veradev = getLuupDeviceFromObjInstance( lul_device, obj )
 		local power = cmdClass.data["4"].val.value
-		setVariableIfChanged("urn:micasaverde-com:serviceId:EnergyMetering1", "Watts", power or '', lul_device)
+		setVariableIfChanged("urn:micasaverde-com:serviceId:EnergyMetering1", "Watts", power or '', veraid)
 	end
 	if (cmdClass.data["5"] ~= nil) then
-		local altid = luup.devices[lul_device].id .. ".49.5"
-		local child = findChild(lul_device,altid)
+		-- local altid = luup.devices[lul_device].id .. ".49.5"
+		-- local child = findChild(lul_device,altid)
 		local hum = cmdClass.data["5"].val.value
-		setVariableIfChanged("urn:micasaverde-com:serviceId:HumiditySensor1", "CurrentLevel", hum or '', child)
+		setVariableIfChanged("urn:micasaverde-com:serviceId:HumiditySensor1", "CurrentLevel", hum or '', childid)
 	end
 	if (cmdClass.data["27"] ~= nil) then
-		local altid = luup.devices[lul_device].id .. ".49.27"
-		local child = findChild(lul_device,altid)
+		-- local altid = luup.devices[lul_device].id .. ".49.27"
+		-- local child = findChild(lul_device,altid)
 		local uv = cmdClass.data["27"].val.value
-		setVariableIfChanged("urn:micasaverde-com:serviceId:UltravioletSensor1", "CurrentLevel", uv or '', child)
+		setVariableIfChanged("urn:micasaverde-com:serviceId:UltravioletSensor1", "CurrentLevel", uv or '', childid)
 	end
 end
 
-local function updateSensorBinary( lul_device , cmdClass )
+local function updateSensorBinary( lul_device, obj , cmdClass )
 	debug(string.format("updateSensorBinary(%s,%s)",lul_device,json.encode(cmdClass)))
+	local childid, child = getLuupDeviceFromObjInstance( lul_device, obj )
 	-- Incomplete code : 
 	-- for now, just decode the General Purpose sensor
 	-- 1 = General Purpose
@@ -822,34 +739,36 @@ local function updateSensorBinary( lul_device , cmdClass )
 		if (cmdClass.data["1"].level.value == true ) then
 			result = "1"
 		end
-		setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "Tripped", result, lul_device)
+		setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "Tripped", result, childid)
 		if (result=="1") then
-			setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "LastTrip", tostring(cmdClass.data["1"].level.updateTime), lul_device)
+			setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "LastTrip", tostring(cmdClass.data["1"].level.updateTime), childid)
 		else
-			setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "LastUntrip", tostring(cmdClass.data["1"].level.updateTime), lul_device)
+			setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "LastUntrip", tostring(cmdClass.data["1"].level.updateTime), childid)
 		end
 	end
 end
 
-local function updateBatteryLevel( lul_device , cmdClass )
+local function updateBatteryLevel( lul_device, obj , cmdClass )
 	debug(string.format("updateBatteryLevel(%s,%s)",lul_device,json.encode(cmdClass)))
-	setVariableIfChanged("urn:micasaverde-com:serviceId:HaDevice1", "BatteryLevel", cmdClass.data.last.value, lul_device)
-	setVariableIfChanged("urn:micasaverde-com:serviceId:HaDevice1", "BatteryDate", cmdClass.data.last.updateTime, lul_device)
+	local childid, child = getLuupDeviceFromObjInstance( lul_device, obj )
+	setVariableIfChanged("urn:micasaverde-com:serviceId:HaDevice1", "BatteryLevel", cmdClass.data.last.value, childid)
+	setVariableIfChanged("urn:micasaverde-com:serviceId:HaDevice1", "BatteryDate", cmdClass.data.last.updateTime, childid)
 end
 
-local function updateWakeUp( lul_device , cmdClass )
+local function updateWakeUp( lul_device, obj , cmdClass )
 	debug(string.format("updateWakeUp(%s,%s)",lul_device,json.encode(cmdClass)))
-	setVariableIfChanged("urn:micasaverde-com:serviceId:ZWaveDevice1", "LastWakeup", cmdClass.data.lastWakeup.updateTime, lul_device)
-	setVariableIfChanged("urn:micasaverde-com:serviceId:ZWaveDevice1", "WakeupInterval", cmdClass.data.interval.value, lul_device)
+	local childid, child = getLuupDeviceFromObjInstance( lul_device, obj )
+	setVariableIfChanged("urn:micasaverde-com:serviceId:ZWaveDevice1", "LastWakeup", cmdClass.data.lastWakeup.updateTime, childid)
+	setVariableIfChanged("urn:micasaverde-com:serviceId:ZWaveDevice1", "WakeupInterval", cmdClass.data.interval.value, childid)
 end
 
-local function updateSwitchMultiLevel( lul_device , cmdClass )
+local function updateSwitchMultiLevel( lul_device, obj , cmdClass )
 	debug(string.format("updateSwitchMultiLevel(%s,%s)",lul_device,json.encode(cmdClass)))
+	local childid, child = getLuupDeviceFromObjInstance( lul_device, obj )
 	local value = tonumber (cmdClass.data.level.value) or 0
-	setVariableIfChanged("urn:upnp-org:serviceId:Dimming1", "LoadLevelStatus", value, lul_device)
-	-- setVariableIfChanged("urn:upnp-org:serviceId:Dimming1", "LoadLevelTarget", value, lul_device)
+	setVariableIfChanged("urn:upnp-org:serviceId:Dimming1", "LoadLevelStatus", value, childid)
+	-- setVariableIfChanged("urn:upnp-org:serviceId:Dimming1", "LoadLevelTarget", value, childid)
 end
-
 
  -- one entry per cmdClass which we know how to decode and update VERA device from
 local updateCommandClassDataMap = {
@@ -871,12 +790,20 @@ local function initDeviceInstanceFromZWayData( lul_device, zway_device_id, insta
 	local altid = zway_device_id.."."..instance_id
 	local veraDeviceId = findChild(lul_device, altid)
 	if (veraDeviceId == nil ) then
-		debug(string.format("initDeviceInstanceFromZWayData could not find device %s in parent %s",zway_device_id.."."..instance_id,lul_device))
+		debug(string.format("initDeviceInstanceFromZWayData could not find device %s in parent %s",altid,lul_device))
 		return -1
 	end
 		
 	-- update status variables from zway instance cmdClass data
 	local instance = zway_device.instances[instance_id]	
+	setVariableIfChanged(
+		RAZB_SERVICE, "ZW_PID", 
+		string.format("%s_%s_%s_%s",
+			zway_device.data.manufacturerId.value,
+			zway_device.data.manufacturerProductType.value,
+			zway_device.data.manufacturerProductId.value,
+			instance_id), 
+		veraDeviceId)		
 
 	setVariableIfChanged(
 		RAZB_SERVICE, "ZW_Generic_Specific", 
@@ -889,7 +816,7 @@ local function initDeviceInstanceFromZWayData( lul_device, zway_device_id, insta
 	for cmdClass_id,cmdClass in pairs(instance.commandClasses) do 
 		local updateFunc = updateCommandClassDataMap[cmdClass_id]
 		if (updateFunc ~= nil) then
-			(updateFunc)(veraDeviceId, cmdClass)
+			(updateFunc)(lul_device, {zwid=zway_device_id, instid=instance_id, cls=cmdClass_id, var=nil}, cmdClass)
 		else
 			debug(string.format("Unknown cmdClass '%s', ignoring update",cmdClass_id))
 		end
@@ -928,14 +855,6 @@ local function initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
 	local veraDeviceId = findChild(lul_device, zway_device_id..".0")
 	-- this info could depend on the fact that the user selected a device description in the zway user interface ( peperdb ! )
 	luup.attr_set( "manufacturer", zway_device.data.vendorString.value , veraDeviceId)
-	setVariableIfChanged(
-		RAZB_SERVICE, "ZW_PID", 
-		string.format("%s_%s_%s_%s",
-			zway_device.data.manufacturerId.value,
-			zway_device.data.manufacturerProductType.value,
-			zway_device.data.manufacturerProductId.value,
-			instance_id), 
-		veraDeviceId)		
 		  
 	-- update device with VERA type of information 
 	setVariableIfChanged(
@@ -959,27 +878,21 @@ local function refreshDevices( lul_device, zway_data )
 		-- try to decode command classes
 		-- debug( string.format("devid:%s,instid:%s,cls:%s,variable:%s",devid or 'unk',instid or 'unk',cls or 'unk',variable or 'unk') )
 		if (devid ~= nil ) then
-			local altid = devid.."."..instid
-			if (cls == "49") then
-				altid = string.format("%s.%s.%s.%s",devid,instid,cls,variable)
-			end
-			local vera_id, child_v = findChild( lul_device, altid )
-			if (vera_id ~= nil) then
-				zway_tree.devices[devid].instances[instid].commandClasses[cls].data[variable] = v
-				local updateFunc = updateCommandClassDataMap[cls]
-				if (updateFunc ~= nil) then
-					(updateFunc)(vera_id, zway_tree.devices[devid].instances[instid].commandClasses[cls])
-				else
-					debug(string.format("Unknown cmdClass:'%s', ignoring update",cls))
-				end				
+			-- update zway tree
+			zway_tree.devices[devid].instances[instid].commandClasses[cls].data[variable] = v
+			-- update vera devices
+			local updateFunc = updateCommandClassDataMap[cls]
+			if (updateFunc ~= nil) then
+				(updateFunc)(lul_device, {zwid=devid, instid=instid, cls=cls, var=variable}, zway_tree.devices[devid].instances[instid].commandClasses[cls])
 			else
-				debug("Unknown zWay device:"..devid )
-			end
+				debug(string.format("Unknown cmdClass:'%s', ignoring update",cls))
+			end				
 		else
 			-- try to decode NIF
 			devid = k:match("devices%.(%d+)%.data%.nodeInfoFrame")
 			if (devid ~= nil ) then
-				local vera_id, child_v = findChild( lul_device, devid..".0" )
+				local altid = generateAltid(devid,"0")
+				local vera_id, child_v = findChild( lul_device, altid )
 				setVariableIfChanged(
 					"urn:micasaverde-com:serviceId:ZWaveDevice1","NodeInfo",
 					zWayToVeraNodeInfo(v.value),
@@ -992,16 +905,16 @@ local function refreshDevices( lul_device, zway_data )
 end
 
 local function appendZwayDevice (lul_device, handle, altid, descr)
-  debug(string.format("Creating device for zway dev-instance #%s", altid))
-  luup.chdev.append(
-    lul_device, handle, 	-- parent device and handle
-    altid , descr.name, 	-- id and description
-    descr.devicetype, 		-- device type
-    descr.DFile, descr.IFile, -- device filename and implementation filename
-    descr.Parameters, 				-- uPNP child device parameters: "service,variable=value\nservice..."
-    false,							-- embedded
-    false							-- invisible
-  )
+	debug(string.format("Creating device for zway dev-instance #%s", altid))
+	luup.chdev.append(
+		lul_device, handle, 	-- parent device and handle
+		altid , descr.name, 	-- id and description
+		descr.devicetype, 		-- device type
+		descr.DFile, descr.IFile, -- device filename and implementation filename
+		descr.Parameters, 				-- uPNP child device parameters: "service,variable=value\nservice..."
+		false,							-- embedded
+		false							-- invisible
+	)
 end
 
 -- create correct parent/child relationship between instances
@@ -1015,11 +928,11 @@ local function resyncZwayDevices(lul_device)
 
 	local handle = luup.chdev.start(lul_device);
 	for device_id,zway_device in pairs(zway_tree.devices) do
-		if (device_id~="1") then
+		if (device_id~= zway_controller_id ) then
 			for instance_id,instance in pairs({["0"] = zway_device.instances["0"]}) do 
 				local descr = findDeviceDescription(zway_device,instance_id)
 				if (descr ~= nil) then
-					local altid = device_id.."."..instance_id
+					local altid = generateAltid(device_id,instance_id) 
 					parent [altid] = {device_id = device_id, zway_device = zway_device}
 					appendZwayDevice (lul_device, handle, altid, descr)
 				end
@@ -1030,60 +943,48 @@ local function resyncZwayDevices(lul_device)
   	
   -- now for all lower-level instances
 	for devNo, dev in pairs(luup.devices) do
-    local p = parent [dev.id]
-    if p then
-      getmetatable(dev).__index.handle_children = true       -- ensure parent handles Zwave actions
-      local handle = luup.chdev.start(devNo);
-      local device_id, zway_device = p.device_id, p.zway_device
-      for instance_id,instance in pairs(zway_device.instances) do 
-		debug( string.format("Instance %s", instance_id))
-		-- treat the SensorMultiLevel situation
-		-- even on instance 0
-		if (instance.commandClasses["49"] ~= nil ) then
-			-- sensor type
-			local class_data = instance.commandClasses["49"].data
-			-- debug( string.format("Sensor 49 data %s", json.encode(class_data)) )
-			-- in case of sensor
-			for k,sensor_type in pairs({
-					["1"]="Temperature",
-					["3"]="Light",
-					["5"]="Humidity",
-					["27"]="Ultraviolet"
-				}) do
-				if (class_data[k] ~= nil) then
-					local descr = findDeviceDescription(zway_device,instance_id,sensor_type)
-					if (descr ~= nil) then
-						local altid = string.format("%s.%s.%s.%s",device_id,instance_id,49,k)
-						appendZwayDevice (devNo, handle, altid, descr)
+		local p = parent [dev.id]	-- dev.id is the altid 
+		if p then
+			getmetatable(dev).__index.handle_children = true       -- ensure parent handles Zwave actions
+			local handle = luup.chdev.start(devNo);
+			local device_id, zway_device = p.device_id, p.zway_device
+			for instance_id,instance in pairs(zway_device.instances) do 
+				debug( string.format("Instance %s", instance_id))
+				-- treat the SensorMultiLevel situation
+				-- even on instance 0
+				if (instance.commandClasses["49"] ~= nil ) then
+					-- sensor type
+					local class_data = instance.commandClasses["49"].data
+					-- debug( string.format("Sensor 49 data %s", json.encode(class_data)) )
+					-- in case of sensor
+					for k,sensor_type in pairs({
+							["1"]="Temperature",
+							["3"]="Light",
+							["5"]="Humidity",
+							["27"]="Ultraviolet"
+						}) do
+						if (class_data[k] ~= nil) then
+							local descr = findDeviceDescription(zway_device,instance_id,sensor_type)
+							if (descr ~= nil) then
+								local altid = generateAltid(device_id,instance_id,"49",k)
+								appendZwayDevice (devNo, handle, altid, descr)
+							end
+						end
+					end
+				else
+					-- classical situation, we need to create other instances
+					if instance_id ~= "0" then	-- instance 0 is already done
+						-- debug( string.format("No Sensor data"))
+						local descr = findDeviceDescription(zway_device,instance_id)
+						if (descr ~= nil) then
+							local altid = generateAltid(device_id,instance_id) 
+							appendZwayDevice (devNo, handle, altid, descr)
+						end
 					end
 				end
 			end
-		else
-			-- classical situation
-			if instance_id ~= "0" then
-				-- debug( string.format("No Sensor data"))
-				local descr = findDeviceDescription(zway_device,instance_id)
-				if (descr ~= nil) then
-					local altid = device_id.."."..instance_id
-					appendZwayDevice (devNo, handle, altid, descr)
-				end
-			end
-		end
-		-- if (instance.commandClasses["49"] ~=nil ) then
-			-- local cmdclasses = instance.commandClasses["49"].data
-			-- for k,v in pairs({"1","3","5","27"}) do
-				-- if (cmdclasses[v] ~= nil) then
-					-- local altid = device_id.."."..instance_id
-					-- if (instancecontainers[ altid ]==nil) then
-						-- instancecontainers[ altid ]={}
-					-- end
-					-- table.insert( instancecontainers[ altid ], {device_id = device_id, instance_id = instance_id, sensor_type=v,  zway_device = zway_device} )
-				-- end
-			-- end
-		-- end
-      end
-      local reload2 = luup.chdev.sync(devNo, handle, no_reload)   -- sync the lower-level devices for this top-level one
-      reload = reload or reload2
+			local reload2 = luup.chdev.sync(devNo, handle, no_reload)   -- sync the lower-level devices for this top-level one
+			reload = reload or reload2
 		end
 	end
 	
@@ -1093,7 +994,7 @@ local function resyncZwayDevices(lul_device)
 	-- if we are here, it means we did not reload and we can update the devices that were created
 	debug(string.format("Updating Vera devices"))
 	for zway_device_id,zway_device in pairs(zway_tree.devices) do
-		if (zway_device_id~="1") then
+		if (zway_device_id ~= zway_controller_id ) then
 			initDeviceFromZWayData( lul_device, zway_device_id, zway_device )
 		end
 	end
@@ -1192,8 +1093,6 @@ function initstatus(lul_device)
 	this_ipaddr = ip:match "%d+%.%d+%.%d+%.%d+" and ip or "127.0.0.1"
 
 	log("initstatus("..lul_device..") starting version: "..version)	
-	-- math.randomseed( os.time() )
-	-- checkVersion(lul_device)    -- openLuup is always UI7 compatible
 
 	luup.devices[lul_device].action_callback (generic_action)     -- catch all undefined action calls
 	startupDeferred(lul_device)
