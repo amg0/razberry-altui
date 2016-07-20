@@ -267,7 +267,8 @@ local function generateAltid(devid,instid,cls,variable)
 end
 
 local function decodeAltid(altid)
-	local parts = Split(altid,".")
+	local parts = Split(altid,"%.")
+	-- debug(string.format("parts %s",json.encode(parts)))
 	return parts[1],parts[2] or '0',parts[3] or '',parts[4] or ''
 	-- local devid,instid,cls,variable
 end
@@ -413,15 +414,19 @@ local function UserSetPowerTarget(lul_device,lul_settings)
 	local newTargetValue = tonumber(lul_settings.newTargetValue)
 	debug(string.format("UserSetPowerTarget(%s,%s)",lul_device,newTargetValue))
 	setVariableIfChanged("urn:upnp-org:serviceId:SwitchPower1", "Target", newTargetValue, lul_device)
-	local zwid = luup.attr_get('altid',lul_device)
+	local altid  = luup.attr_get('altid',lul_device)
+	local zwid,instid,cls,variable = decodeAltid(altid)
+
+-- debug(string.format("lul %s altid %s zwid %s",lul_device,altid,zwid))
 	if (newTargetValue >0) then
 		newTargetValue = 255
 	end
 
 	local url = string.format(
-		"http://%s:8083/ZWave.zway/Run/devices[%s].instances[0].commandClasses[%s].Set(%s)",
+		"http://%s:8083/ZWave.zway/Run/devices[%s].instances[%s].commandClasses[%s].Set(%s)",
 		this_ipaddr,
 		zwid,
+		instid,
 		37,
 		newTargetValue)
 	return myHttp(url,"POST","")
@@ -432,13 +437,15 @@ local function UserSetLoadLevelTarget(lul_device,lul_settings)
 	local newLoadlevelTarget = tonumber(lul_settings.newLoadlevelTarget) or 0
 	debug(string.format("UserSetLoadLevelTarget(%s,%s)",lul_device,newLoadlevelTarget))
 	setVariableIfChanged("urn:upnp-org:serviceId:Dimming1", "LoadLevelTarget", newLoadlevelTarget, lul_device)
-	local zwid = luup.attr_get('altid',lul_device)
+	local altid  = luup.attr_get('altid',lul_device)
+	local zwid,instid,cls,variable = decodeAltid(altid)
 	newLoadlevelTarget = newLoadlevelTarget % 256
 
 	local url = string.format(
-		"http://%s:8083/ZWave.zway/Run/devices[%s].instances[0].commandClasses[%s].Set(%s,255)",
+		"http://%s:8083/ZWave.zway/Run/devices[%s].instances[%s].commandClasses[%s].Set(%s,255)",
 		this_ipaddr,
 		zwid,
+		instid,
 		38,
 		newLoadlevelTarget)
 	return myHttp(url,"POST","")
@@ -458,7 +465,7 @@ end
 local ActionMap = {
 	["urn:micasaverde-com:serviceId:SecuritySensor1.SetArmed"] = UserSetArmed,
 	["urn:upnp-org:serviceId:SwitchPower1.SetTarget"] = UserSetPowerTarget,
-  ["urn:upnp-org:serviceId:Dimming1.SetLoadLevelTarget"] = UserSetLoadLevelTarget, 
+	["urn:upnp-org:serviceId:Dimming1.SetLoadLevelTarget"] = UserSetLoadLevelTarget, 
 }
 local function generic_action (serviceId, name)
 	local key = serviceId .. "." .. name
