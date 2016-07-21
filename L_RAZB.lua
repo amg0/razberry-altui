@@ -7,7 +7,7 @@
 -- // but WITHOUT ANY WARRANTY; without even the implied warranty of
 -- // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE . 
 
-local version = "v0.08beta"
+local version = "v0.09beta"
 
 local MSG_CLASS = "RAZB"
 local RAZB_SERVICE = "urn:upnp-org:serviceId:razb1"
@@ -244,9 +244,15 @@ end
 local function findChild( lul_parent, altid )
 	debug(string.format("findChild(%s,%s)",lul_parent,altid))
 	for k,v in pairs(luup.devices) do
-		if( getParent(k)==lul_parent) then
-			if( getAltID(k) == altid) then
-				return k,v
+		if( getAltID(k) == altid) then
+			-- id match, search through parent tree
+			local parent = getParent(k) 
+			while (parent ~=0) do
+				if (parent == lul_parent) then
+					return k,v
+				else
+					parent = getParent(parent)
+				end
 			end
 		end
 	end
@@ -688,38 +694,49 @@ end
 
 local function updateSensorMultiLevel( lul_device, obj , cmdClass )
 	debug(string.format("updateSensorMultiLevel(%s,%s)",lul_device,json.encode(cmdClass)))
-	local childid, child = getLuupDeviceFromObj( lul_device, obj )
-	-- Incomplete code : 
-	-- for now, just decode the Power sensor
-	if (cmdClass.data["1"] ~= nil) then
-		-- local altid = luup.devices[lul_device].id .. ".49.1"
-		-- local child = findChild(lul_device,altid)
-		local temp = cmdClass.data["1"].val.value
-		setVariableIfChanged("urn:upnp-org:serviceId:TemperatureSensor1", "CurrentTemperature", temp or '', childid)
+
+	local function updateTemp(k,v) 
+		obj.var = k
+		local childid, child = getLuupDeviceFromObj( lul_device, obj )
+		setVariableIfChanged("urn:upnp-org:serviceId:TemperatureSensor1", "CurrentTemperature", v or '', childid)
 	end
-	if (cmdClass.data["3"] ~= nil) then
-		-- local altid = luup.devices[lul_device].id .. ".49.3"
-		-- local child = findChild(lul_device,altid)
-		local lux = cmdClass.data["3"].val.value
+
+	local function updateLux(k,lux) 
+		obj.var = k
+		local childid, child = getLuupDeviceFromObj( lul_device, obj )
 		setVariableIfChanged("urn:micasaverde-com:serviceId:LightSensor1", "CurrentLevel", lux or '', childid)
 	end
-	if (cmdClass.data["4"] ~= nil) then
-		-- exception, we log it on the instance level node.
-		local veraid, veradev = getLuupDeviceFromObjInstance( lul_device, obj )
-		local power = cmdClass.data["4"].val.value
+
+	local function updateWatts(k,power) 
+		local veraid, veradev = getLuupDeviceFromObjInstance( lul_device, obj )	-- top level object
 		setVariableIfChanged("urn:micasaverde-com:serviceId:EnergyMetering1", "Watts", power or '', veraid)
 	end
-	if (cmdClass.data["5"] ~= nil) then
-		-- local altid = luup.devices[lul_device].id .. ".49.5"
-		-- local child = findChild(lul_device,altid)
-		local hum = cmdClass.data["5"].val.value
+
+	local function updateHum(k,hum) 
+		obj.var = k
+		local childid, child = getLuupDeviceFromObj( lul_device, obj )
 		setVariableIfChanged("urn:micasaverde-com:serviceId:HumiditySensor1", "CurrentLevel", hum or '', childid)
 	end
-	if (cmdClass.data["27"] ~= nil) then
-		-- local altid = luup.devices[lul_device].id .. ".49.27"
-		-- local child = findChild(lul_device,altid)
-		local uv = cmdClass.data["27"].val.value
+
+	local function updateUV(k,uv) 
+		obj.var = k
+		local childid, child = getLuupDeviceFromObj( lul_device, obj )
 		setVariableIfChanged("urn:micasaverde-com:serviceId:UltravioletSensor1", "CurrentLevel", uv or '', childid)
+	end
+
+	-- Incomplete code : 
+	-- for now, just decode the Power sensor	
+	local sensortypeMap = {
+		["1"]  = { func=updateTemp },
+		["3"]  = { func=updateLux },
+		["4"]  = { func=updateWatts },
+		["5"]  = { func=updateHum },
+		["27"] = { func=updateUV }
+	}
+	for k,v in pairs(sensortypeMap) do
+		if (cmdClass.data[k] ~= nil) then
+			(v.func)(k,cmdClass.data[k].val.value)
+		end
 	end
 end
 
@@ -741,16 +758,19 @@ local function updateSensorBinary( lul_device, obj , cmdClass )
 	-- 11 = Tilt
 	-- 12 = Motion
 	-- 13 = Glass Break
-	if (cmdClass.data["1"] ~= nil) then
-		local result = "0"
-		if (cmdClass.data["1"].level.value == true ) then
-			result = "1"
-		end
-		setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "Tripped", result, childid)
-		if (result=="1") then
-			setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "LastTrip", tostring(cmdClass.data["1"].level.updateTime), childid)
-		else
-			setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "LastUntrip", tostring(cmdClass.data["1"].level.updateTime), childid)
+	for i=1,13 do 
+		local idx = tostring(i)
+		if (cmdClass.data[idx] ~= nil) then
+			local result = "0"
+			if (cmdClass.data[idx].level.value == true ) then
+				result = "1"
+			end
+			setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "Tripped", result, childid)
+			if (result=="1") then
+				setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "LastTrip", tostring(cmdClass.data[idx].level.updateTime), childid)
+			else
+				setVariableIfChanged("urn:micasaverde-com:serviceId:SecuritySensor1", "LastUntrip", tostring(cmdClass.data[idx].level.updateTime), childid)
+			end
 		end
 	end
 end
@@ -1020,7 +1040,6 @@ function getZWayData(lul_device,forcedtimestamp)
 	local password = getSetVariable(RAZB_SERVICE, "Password", lul_device, "")
 	local result = myHttp(url,"POST","")
 	if (result ~= -1) then
-	
 		local obj = json.decode(result)
 		if (timestamp==0) then
 			-- very first update
