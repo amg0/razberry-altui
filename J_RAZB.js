@@ -92,32 +92,3 @@ function saveVar(deviceID,  service, varName, varVal, reload)
 	set_device_state (deviceID, razb_Svs, varName, varVal, (reload==true) ? 0 : 1);	// lost in case of luup restart
 }
 
-
-//-------------------------------------------------------------
-// Helper functions to build URLs to call VERA code from JS
-//-------------------------------------------------------------
-function buildVeraURL( deviceID, fnToUse, varName, varValue)
-{
-	var urlHead = '' + ip_address + 'id=lu_action&serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1&action=RunLua&Code=';
-	if (varValue != null)
-		return urlHead + fnToUse + '("' + razb_Svs + '", "' + varName + '", "' + varValue + '", ' + deviceID + ')';
-
-	return urlHead + fnToUse + '("' + razb_Svs + '", "' + varName + '", "", ' + deviceID + ')';
-}
-
-function buildVariableSetUrl( deviceID, varName, varValue)
-{
-	var urlHead = '' + ip_address + 'id=variableset&DeviceNum='+deviceID+'&serviceId='+razb_Svs+'&Variable='+varName+'&Value='+varValue;
-	return urlHead;
-}
-
-function buildUPnPActionUrl(deviceID,service,action,params)
-{
-	var urlHead = ip_address +'id=action&output_format=json&DeviceNum='+deviceID+'&serviceId='+service+'&action='+action;//'&newTargetValue=1';
-	if (params != undefined) {
-		jQuery.each(params, function(index,value) {
-			urlHead = urlHead+"&"+index+"="+value;
-		});
-	}
-	return urlHead;
-}
